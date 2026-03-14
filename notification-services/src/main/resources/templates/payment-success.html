@@ -1,0 +1,12 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>Payment Successful</title>
+</head>
+<body>
+    <h1>Payment Confirmation</h1>
+    <p>Dear <span th:text="${fname}">Customer</span>,</p>
+    <p>Your payment of <span th:text="${amount}">0</span> INR for order <span th:text="${orderId}">N/A</span> has been processed successfully.</p>
+    <p>Thank you!</p>
+</body>
+</html>
