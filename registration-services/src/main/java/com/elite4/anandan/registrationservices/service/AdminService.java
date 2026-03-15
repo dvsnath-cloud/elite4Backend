@@ -1,17 +1,18 @@
 package com.elite4.anandan.registrationservices.service;
 
+import com.elite4.anandan.registrationservices.document.RoomOnBoardDocument;
+import com.elite4.anandan.registrationservices.dto.ClientAndRoomOnBoardId;
+import com.elite4.anandan.registrationservices.dto.ClientNameAndRooms;
+import com.elite4.anandan.registrationservices.dto.Room;
 import com.elite4.anandan.registrationservices.dto.UserResponse;
 import com.elite4.anandan.registrationservices.model.User;
 import com.elite4.anandan.registrationservices.repository.RoleRepository;
+import com.elite4.anandan.registrationservices.repository.RoomsOrHouseRepository;
 import com.elite4.anandan.registrationservices.repository.UserRepository;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Optional;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Collectors;
 
 /**
@@ -24,9 +25,12 @@ public class AdminService {
 
     private final RoleRepository roleRepository;
 
-    public AdminService(UserRepository userRepository, RoleRepository roleRepository) {
+    private final RoomsOrHouseRepository roomsOrHouseRepository;
+
+    public AdminService(UserRepository userRepository, RoleRepository roleRepository, RoomsOrHouseRepository roomsOrHouseRepository) {
         this.userRepository = userRepository;
         this.roleRepository = roleRepository;
+        this.roomsOrHouseRepository = roomsOrHouseRepository;
     }
 
     /**
@@ -149,15 +153,44 @@ public class AdminService {
     }
 
     public UserResponse toUserResponse(User user) {
-        UserResponse response = new UserResponse();
-        response.setId(user.getId());
-        response.setUsername(user.getUsername());
-        response.setEmail(user.getEmail());
-        response.setRoleIds(user.getRoleIds());
-        response.setActive(user.isActive());
-        response.setCreatedAt(user.getCreatedAt());
-        response.setUpdatedAt(user.getUpdatedAt());
-        response.setLastLoginAt(user.getLastLoginAt());
-        return response;
+            UserResponse response = new UserResponse();
+            response.setId(user.getId());
+            response.setUsername(user.getUsername());
+            response.setEmail(user.getEmail());
+            response.setRoleIds(user.getRoleIds());
+            response.setActive(user.isActive());
+            response.setCreatedAt(user.getCreatedAt());
+            response.setUpdatedAt(user.getUpdatedAt());
+            response.setLastLoginAt(user.getLastLoginAt());
+            Set<ClientNameAndRooms> clientNameAndRoomsSet = new HashSet<>();
+            Set<ClientAndRoomOnBoardId> clientAndRoomOnBoardIds = user.getClientDetails();
+            if (clientAndRoomOnBoardIds != null) {
+                for(ClientAndRoomOnBoardId clientAndRoomOnBoardId : clientAndRoomOnBoardIds) {
+                    ClientNameAndRooms clientNameAndRooms = new ClientNameAndRooms();
+                    clientNameAndRooms.setClientName(clientAndRoomOnBoardId.getClientName());
+                    Set<Room> roomNumbers = new HashSet<>();
+                    // Only fetch rooms for this specific client, not all
+                    String roomOnBoardId = clientAndRoomOnBoardId.getRoomOnBoardId();
+                    if (roomOnBoardId != null && !roomOnBoardId.trim().isEmpty()) {
+                        Optional<RoomOnBoardDocument> roomOnBoardDocument = roomsOrHouseRepository.findById(roomOnBoardId);
+                        if (roomOnBoardDocument.isPresent()) {
+                            Set<Room> retrievedRooms = roomOnBoardDocument.get().getRooms();
+                            // Handle null rooms safely
+                            if (retrievedRooms != null && !retrievedRooms.isEmpty()) {
+                                // Filter out rooms with null enum values or keep them as-is
+                                // The custom deserializers will handle null values gracefully
+                                roomNumbers.addAll(retrievedRooms);
+                            }
+                        }
+                    }
+
+                    clientNameAndRooms.setRooms(roomNumbers);
+                    String category = clientAndRoomOnBoardId.getClientCategory();
+                    clientNameAndRooms.setCategoryType(ClientNameAndRooms.categoryValues.valueOf(category));
+                    clientNameAndRoomsSet.add(clientNameAndRooms);
+                }
+            }
+            response.setClientNameAndRooms(clientNameAndRoomsSet);
+            return response;
     }
 }

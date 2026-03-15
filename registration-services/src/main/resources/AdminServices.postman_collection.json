@@ -1,0 +1,659 @@
+{
+  "info": {
+    "_postman_id": "adfe97f3-3179-43d3-a758-e8c75cbc47f0",
+    "name": "AdminServices",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "51628128",
+    "_collection_link": "https://go.postman.co/collection/51628128-adfe97f3-3179-43d3-a758-e8c75cbc47f0?source=collection_link"
+  },
+  "item": [
+    {
+      "name": "SignUp",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n    \"username\": \"vdarsi\",\r\n    \"password\": \"8639788672\",\r\n    \"ownerOfClient\": \"viswnath darsi\",\r\n    \"email\": \"vdarsi@gmail.com\",\r\n    \"phoneNumber\": \"8639788672\",\r\n    \"clientDetails\": [{\r\n        \"clientName\": \"elite4colive\",\r\n        \"categoryType\": \"PG\",\r\n        \"rooms\": [\r\n            {\r\n                \"roomType\": \"SINGLE\",\r\n                \"roomNumber\": \"102\"\r\n            },\r\n            {\r\n                \"houseNumber\": \"101\",\r\n                \"houseType\": \"1BHK\"\r\n            }\r\n        ]\r\n    }],\r\n    \"roleIds\": [\r\n        \"ROLE_USER\",\r\n        \"ROLE_GUEST\"\r\n    ]\r\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://localhost:8082/adminservices/signup",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8082",
+          "path": [
+            "adminservices",
+            "signup"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "SignUp Guest",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n    \"username\":\"yuvan\",\r\n    \"ownerOfClient\":\"yuvan srinandan\",\r\n    \"password\":\"yuvan@123\",\r\n    \"email\":\"yuvan@gmail.com\",\r\n    \"phoneNumber\":\"7019117150\",\r\n    \"clientDetails\": [{\r\n        \"clientName\": \"elite4colive\",\r\n        \"categoryType\": \"PG\",\r\n        \"rooms\": [\r\n            {\r\n                \"roomType\": \"SINGLE\",\r\n                \"roomNumber\": \"102\",\r\n                \"houseNumber\": \"\",\r\n                \"houseType\": \"\"\r\n            },\r\n            {\r\n                \"roomType\": \"DOUBLE\",\r\n                \"roomNumber\": \"101\",\r\n                \"houseNumber\": \"\",\r\n                \"houseType\": \"\"\r\n            }\r\n        ]\r\n    }],\r\n    \"roleIds\":[\"ROLE_USER\"]\r\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://localhost:8082/adminservices/signup",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8082",
+          "path": [
+            "adminservices",
+            "signup"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "SignUp Moderator",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n    \"username\":\"anupama\",\r\n    \"password\":\"8904108571\",\r\n    \"ownerOfClient\": \"Anupama Alapati\",\r\n    \"email\":\"anupama@gmail.com\",\r\n    \"phoneNumber\": \"8904108571\",\r\n    \"clientDetails\": [{\r\n        \"clientName\": \"elite4colive\",\r\n        \"categoryType\": \"PG\",\r\n        \"rooms\": [\r\n            {\r\n                \"roomType\": \"SINGLE\",\r\n                \"roomNumber\": \"102\",\r\n                \"houseNumber\": \"\",\r\n                \"houseType\": \"\"\r\n            },\r\n            {\r\n                \"roomType\": \"DOUBLE\",\r\n                \"roomNumber\": \"101\",\r\n                \"houseNumber\": \"\",\r\n                \"houseType\": \"\"\r\n            }\r\n        ]\r\n    }],\r\n    \"roleIds\":[\"ROLE_MODERATOR\",\"ROLE_USER\",\"ROLE_GUEST\"]\r\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://localhost:8082/adminservices/signup",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8082",
+          "path": [
+            "adminservices",
+            "signup"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "LoginForAdmin",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n    \"username\":\"admin\",\r\n    \"password\":\"admin@123\"\r\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://localhost:8082/adminservices/login",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8082",
+          "path": [
+            "adminservices",
+            "login"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "addClient",
+      "request": {
+        "auth": {
+          "type": "noauth"
+        },
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhZG1pbiIsImlhdCI6MTc3MzMyODc4MiwiZXhwIjoxNzczMzM0NzgyfQ.FugsTBRoMeKQZJj91jf8KNZOSpr5o5aL3RSe0CnVk74",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "\r\n{\r\n  \"username\": \"vdarsi\",\r\n  \"email\": \"vdarsi@gmail.com\",\r\n  \"phoneNumber\": \"8639788672\",\r\n  \"clientName\": \"NandansResidency\",\r\n  \"categoryType\": \"HOUSE\",\r\n  \"rooms\": [\r\n    {\r\n      \"houseNumber\": \"101\",\r\n      \"houseType\": \"1BHK\"\r\n    },\r\n    {\r\n      \"houseNumber\": \"102\",\r\n      \"houseType\": \"2BHK\"\r\n    }\r\n  ]\r\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://localhost:8082/adminservices/addClientToUser",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8082",
+          "path": [
+            "adminservices",
+            "addClientToUser"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "addClientWithInvalidUser",
+      "request": {
+        "auth": {
+          "type": "noauth"
+        },
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhZG1pbiIsImlhdCI6MTc3MzMyODc4MiwiZXhwIjoxNzczMzM0NzgyfQ.FugsTBRoMeKQZJj91jf8KNZOSpr5o5aL3RSe0CnVk74",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n  \"username\": \"vdarsi\",\r\n  \"email\": \"vdarsi@gmail.com\",\r\n  \"phoneNumber\": \"86397886716\",\r\n  \"clientName\": \"BalajiCasaBlanca123\",\r\n  \"categoryType\":\"HOUSE\",\r\n  \"rooms\": [\r\n    {\r\n      \"roomType\": \"SINGLE\",\r\n      \"roomNumber\": \"102\",\r\n      \"houseNumber\": \"\",\r\n      \"houseType\": \"\"\r\n    },\r\n    {\r\n      \"roomType\": \"DOUBLE\",\r\n      \"roomNumber\": \"101\",\r\n      \"houseNumber\": \"\",\r\n      \"houseType\": \"\"\r\n    }\r\n  ]\r\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://localhost:8082/adminservices/addClientToUser",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8082",
+          "path": [
+            "adminservices",
+            "addClientToUser"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "addClientWithInvalidUserAndEmail",
+      "request": {
+        "auth": {
+          "type": "noauth"
+        },
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhZG1pbiIsImlhdCI6MTc3MzMyODc4MiwiZXhwIjoxNzczMzM0NzgyfQ.FugsTBRoMeKQZJj91jf8KNZOSpr5o5aL3RSe0CnVk74",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n    \"username\": \"vdarsi\",\r\n    \"password\": \"8639788672\",\r\n    \"ownerOfClient\": \"viswnath darsi\",\r\n    \"email\": \"vdarsi@gmail.com\",\r\n    \"clientName\": \"BalajiCasaBlanca1234\",\r\n    \"categoryType\": \"HOUSE\",\r\n    \"rooms\": [\r\n        {\r\n            \"roomType\": \"SINGLE\",\r\n            \"roomNumber\": \"102\",\r\n            \"houseNumber\": \"\",\r\n            \"houseType\": \"\"\r\n        },\r\n        {\r\n            \"roomType\": \"DOUBLE\",\r\n            \"roomNumber\": \"101\",\r\n            \"houseNumber\": \"\",\r\n            \"houseType\": \"\"\r\n        }\r\n    ]\r\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://localhost:8082/adminservices/addClientToUser",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8082",
+          "path": [
+            "adminservices",
+            "addClientToUser"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "updateRoomTypeToUser",
+      "request": {
+        "auth": {
+          "type": "noauth"
+        },
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhZG1pbiIsImlhdCI6MTc3MzMyODc4MiwiZXhwIjoxNzczMzM0NzgyfQ.FugsTBRoMeKQZJj91jf8KNZOSpr5o5aL3RSe0CnVk74",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{   \r\n    \"username\":\"anupama\",\r\n    \"email\":\"anupama@gmail.com\",\r\n    \"phoneNumber\": \"8904108571\",\r\n    \"roomType\":\"DOUBLE\",\r\n    \"roomNumber\":\"102\",\r\n    \"clientName\":\"elite4colive\"\r\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://localhost:8082/adminservices/updateRoomTypeToUser",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8082",
+          "path": [
+            "adminservices",
+            "updateRoomTypeToUser"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "LoginForModerator",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n    \"username\":\"anupama\",\r\n    \"password\":\"8904108571\"\r\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://localhost:8082/adminservices/login",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8082",
+          "path": [
+            "adminservices",
+            "login"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "LoginForGuest",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n    \"username\":\"vdarsi\",\r\n    \"password\":\"8639788672\"\r\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://localhost:8090/login",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8090",
+          "path": [
+            "login"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "LoginForUser",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n    \"username\":\"yuvan\",\r\n    \"password\":\"yuvan@123\"\r\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://localhost:8090/login",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8090",
+          "path": [
+            "login"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "pending-approvals",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhZG1pbiIsImlhdCI6MTc3MzI0Mzc3MywiZXhwIjoxNzczMjQ5NzczfQ.MFmiuvR644rHi1KmvRt6KoPUwE8K_Z0sOyuc_b_TnI4",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "http://localhost:8082/adminservices/admin/pending-approvals",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8082",
+          "path": [
+            "adminservices",
+            "admin",
+            "pending-approvals"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "active-users",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhZG1pbiIsImlhdCI6MTc3MzI0Mzk3NSwiZXhwIjoxNzczMjQ5OTc1fQ._JXC_a2WW0ShxgrL4re1EwtZ9WR16EdyCGT5S61DVsE",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "http://localhost:8082/adminservices/admin/active-users",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8082",
+          "path": [
+            "adminservices",
+            "admin",
+            "active-users"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Approve",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhZG1pbiIsImlhdCI6MTc3MzMwMTkwMywiZXhwIjoxNzczMzA3OTAzfQ.bRdbSOTaKW9fo-Ab3OmsAf4k6nFni9jpUq_qHRO9Bi4",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "http://localhost:8090/admin/approve/69b270340febbe31f51ea402",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8090",
+          "path": [
+            "admin",
+            "approve",
+            "69b270340febbe31f51ea402"
+          ],
+          "query": [
+            {
+              "key": "Authorization",
+              "value": "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhbnVwYW1hIiwiaWF0IjoxNzcwOTAxNDQwLCJleHAiOjE3NzA5MDE0NzZ9.EJHBLHYMVm9y2-oKLzq9fuRWXSLNjGJMqnz8QGoAiaI",
+              "disabled": true
+            }
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Approve Copy",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhZG1pbiIsImlhdCI6MTc3MzMyODc4MiwiZXhwIjoxNzczMzM0NzgyfQ.FugsTBRoMeKQZJj91jf8KNZOSpr5o5aL3RSe0CnVk74",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "http://localhost:8082/adminservices/admin/approve/anupama",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8082",
+          "path": [
+            "adminservices",
+            "admin",
+            "approve",
+            "anupama"
+          ],
+          "query": [
+            {
+              "key": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhZG1pbiIsImlhdCI6MTc3MzA2MzYwMCwiZXhwIjoxNzczMDYzNjYwfQ.H-jxEHKL1Ra2w99-UZUbWypbXhl-xP5QTjXQOQUkDfA",
+              "disabled": true
+            }
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "getUserByUserName",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhZG1pbiIsImlhdCI6MTc3MzU1MTM0OCwiZXhwIjoxNzczNTU3MzQ4fQ.UUAllj-_EdDHMoMT7QtlW6gK9NB4UYLtbITLjgruIak",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "http://localhost:8082/adminservices/admin/user/anupama",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8082",
+          "path": [
+            "adminservices",
+            "admin",
+            "user",
+            "anupama"
+          ],
+          "query": [
+            {
+              "key": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhZG1pbiIsImlhdCI6MTc3MzA2MzYwMCwiZXhwIjoxNzczMDYzNjYwfQ.H-jxEHKL1Ra2w99-UZUbWypbXhl-xP5QTjXQOQUkDfA",
+              "disabled": true
+            }
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "user_Reject",
+      "request": {
+        "method": "DELETE",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhZG1pbiIsImlhdCI6MTc3Mjk3MzYwNSwiZXhwIjoxNzcyOTczNjY1fQ._vOLiZ1o2ziqZQpw_yXJ3MmUbxKLeuRWz1-O7UeZptg",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "http://localhost:8090/admin/reject/69ad644eff32f332e43d020a",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8090",
+          "path": [
+            "admin",
+            "reject",
+            "69ad644eff32f332e43d020a"
+          ],
+          "query": [
+            {
+              "key": "Authorization",
+              "value": "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhZG1pbiIsImlhdCI6MTc3Mjk3MzYwNSwiZXhwIjoxNzcyOTczNjY1fQ._vOLiZ1o2ziqZQpw_yXJ3MmUbxKLeuRWz1-O7UeZptg",
+              "disabled": true
+            }
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "user_Inactive",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhZG1pbiIsImlhdCI6MTc3Mjk3NDg3MywiZXhwIjoxNzcyOTc0OTMzfQ.gV7vFeLf0o5L6deGiwkiGp6aAtMxL1RBGjBIQqpsHz0",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "http://localhost:8090/admin/deactivate/69ad725ebba76d5f3a65bbd5",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8090",
+          "path": [
+            "admin",
+            "deactivate",
+            "69ad725ebba76d5f3a65bbd5"
+          ],
+          "query": [
+            {
+              "key": "Authorization",
+              "value": "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhZG1pbiIsImlhdCI6MTc3Mjk3MzYwNSwiZXhwIjoxNzcyOTczNjY1fQ._vOLiZ1o2ziqZQpw_yXJ3MmUbxKLeuRWz1-O7UeZptg",
+              "disabled": true
+            }
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "getUserById",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhbnVwYW1hIiwiaWF0IjoxNzczMDYzODcxLCJleHAiOjE3NzMwNjM5MzF9.A3gBi1PnifoszuSBGa7ih4eV9S8BGE5iRfb8oHe8OxM",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "http://localhost:8090/admin/user/69ad725ebba76d5f3a65bbd5",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8090",
+          "path": [
+            "admin",
+            "user",
+            "69ad725ebba76d5f3a65bbd5"
+          ],
+          "query": [
+            {
+              "key": "Authorization",
+              "value": "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhZG1pbiIsImlhdCI6MTc3Mjk3MzYwNSwiZXhwIjoxNzcyOTczNjY1fQ._vOLiZ1o2ziqZQpw_yXJ3MmUbxKLeuRWz1-O7UeZptg",
+              "disabled": true
+            }
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "getUserById Copy",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhbnVwYW1hIiwiaWF0IjoxNzczMDY0MjY3LCJleHAiOjE3NzMwNjQzMjd9.6pLSm2MvtSs6TM576oO758qomixKX1QdvxSEzmhZubw",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "http://localhost:8082/adminservices/admin/search/anupama",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8082",
+          "path": [
+            "adminservices",
+            "admin",
+            "search",
+            "anupama"
+          ],
+          "query": [
+            {
+              "key": "Authorization",
+              "value": "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhZG1pbiIsImlhdCI6MTc3Mjk3MzYwNSwiZXhwIjoxNzcyOTczNjY1fQ._vOLiZ1o2ziqZQpw_yXJ3MmUbxKLeuRWz1-O7UeZptg",
+              "disabled": true
+            }
+          ]
+        }
+      },
+      "response": []
+    }
+  ]
+}

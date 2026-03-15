@@ -416,6 +416,35 @@ public class UserCreationService {
         response.setCreatedAt(user.getCreatedAt());
         response.setUpdatedAt(user.getUpdatedAt());
         response.setLastLoginAt(user.getLastLoginAt());
+        Set<ClientNameAndRooms> clientNameAndRoomsSet = new HashSet<>();
+        Set<ClientAndRoomOnBoardId> clientAndRoomOnBoardIds = user.getClientDetails();
+        if (clientAndRoomOnBoardIds != null) {
+            for(ClientAndRoomOnBoardId clientAndRoomOnBoardId : clientAndRoomOnBoardIds) {
+                ClientNameAndRooms clientNameAndRooms = new ClientNameAndRooms();
+                clientNameAndRooms.setClientName(clientAndRoomOnBoardId.getClientName());
+                Set<Room> roomNumbers = new HashSet<>();
+                // Only fetch rooms for this specific client, not all
+                String roomOnBoardId = clientAndRoomOnBoardId.getRoomOnBoardId();
+                if (roomOnBoardId != null && !roomOnBoardId.trim().isEmpty()) {
+                    Optional<RoomOnBoardDocument> roomOnBoardDocument = roomsOrHouseRepository.findById(roomOnBoardId);
+                    if (roomOnBoardDocument.isPresent()) {
+                        Set<Room> retrievedRooms = roomOnBoardDocument.get().getRooms();
+                        // Handle null rooms safely
+                        if (retrievedRooms != null && !retrievedRooms.isEmpty()) {
+                            // Filter out rooms with null enum values or keep them as-is
+                            // The custom deserializers will handle null values gracefully
+                            roomNumbers.addAll(retrievedRooms);
+                        }
+                    }
+                }
+
+                clientNameAndRooms.setRooms(roomNumbers);
+                String category = clientAndRoomOnBoardId.getClientCategory();
+                clientNameAndRooms.setCategoryType(ClientNameAndRooms.categoryValues.valueOf(category));
+                clientNameAndRoomsSet.add(clientNameAndRooms);
+            }
+        }
+        response.setClientNameAndRooms(clientNameAndRoomsSet);
         return response;
     }
 

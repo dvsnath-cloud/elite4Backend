@@ -16,6 +16,7 @@ public class UserResponse {
     private Instant createdAt;
     private Instant updatedAt;
     private Instant lastLoginAt;
+    private Set<ClientNameAndRooms> clientNameAndRooms;
 
     public String getId() {
         return id;
@@ -79,5 +80,13 @@ public class UserResponse {
 
     public void setLastLoginAt(Instant lastLoginAt) {
         this.lastLoginAt = lastLoginAt;
+    }
+
+    public Set<ClientNameAndRooms> getClientNameAndRooms() {
+        return clientNameAndRooms;
+    }
+
+    public void setClientNameAndRooms(Set<ClientNameAndRooms> clientNameAndRooms) {
+        this.clientNameAndRooms = clientNameAndRooms;
     }
 }

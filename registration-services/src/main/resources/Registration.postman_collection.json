@@ -1,0 +1,548 @@
+{
+  "info": {
+    "_postman_id": "28a7ae97-83a6-49aa-af1b-f3c439ffdfda",
+    "name": "Registration",
+    "description": "### Welcome to Postman! This is your first collection. \n\nCollections are your starting point for building and testing APIs. You can use this one to:\n\n• Group related requests\n• Test your API in real-world scenarios\n• Document and share your requests\n\nUpdate the name and overview whenever you’re ready to make it yours.\n\n[Learn more about Postman Collections.](https://learning.postman.com/docs/collections/collections-overview/)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "51628128",
+    "_collection_link": "https://go.postman.co/collection/51628128-28a7ae97-83a6-49aa-af1b-f3c439ffdfda?source=collection_link"
+  },
+  "item": [
+    {
+      "name": "LoginForModerator Copy",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n    \"username\":\"admin\",\r\n    \"password\":\"admin@123\"\r\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://localhost:8082/adminservices/login",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8082",
+          "path": [
+            "adminservices",
+            "login"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "onboardUser1",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Successful POST request\", function () {",
+              "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+              "});",
+              ""
+            ],
+            "type": "text/javascript",
+            "packages": {},
+            "requests": {}
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhZG1pbiIsImlhdCI6MTc3MzMyODc4MiwiZXhwIjoxNzczMzM0NzgyfQ.FugsTBRoMeKQZJj91jf8KNZOSpr5o5aL3RSe0CnVk74",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"registration\": {\n    \"fname\": \"John3\",\n    \"lname\": \"Doe3\",\n    \"clientUserName\":\"vdarsi\",\n    \"clientName\":\"NandansResidency\",\n    \"email\": \"john1@example.com\",\n    \"contactNo\": \"9976543212\",\n    \"gender\": \"MALE\",\n    \"checkInDate\": \"2026-03-10\",\n    \"checkOutDate\": \"2026-03-20\",\n    \"roomRent\": 1500.00\n  },\n  \"room\": {\n    \"roomType\": \"\",\n    \"roomNumber\": \"\",\n    \"houseNumber\": \"102\",\n    \"houseType\":\"2BHK\"\n  }\n}\n",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://localhost:8082/registrations/onboardUser",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8082",
+          "path": [
+            "registrations",
+            "onboardUser"
+          ]
+        },
+        "description": "This is a POST request, submitting data to an API via the request body. This request submits JSON data, and the data is reflected in the response.\n\nA successful POST request typically returns a `200 OK` or `201 Created` response code."
+      },
+      "response": []
+    },
+    {
+      "name": "onboardUser2",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Successful POST request\", function () {",
+              "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+              "});",
+              ""
+            ],
+            "type": "text/javascript",
+            "packages": {},
+            "requests": {}
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhZG1pbiIsImlhdCI6MTc3MzM3Nzg4OSwiZXhwIjoxNzczMzgzODg5fQ.ipDXtLfWBsqh1VJimTxdIPcR7o8vYYvK1RSqqgUm8O0",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"registration\": {\n    \"fname\": \"John\",\n    \"lname\": \"Doe\",\n    \"clientUserName\":\"anupama\",\n    \"clientName\":\"elite4colive\",\n    \"email\": \"john1@example.com\",\n    \"contactNo\": \"8904108571\",\n    \"gender\": \"MALE\",\n    \"checkInDate\": \"2026-03-14\"\n  },\n  \"room\": {\n    \"roomType\": \"DOUBLE\",\n    \"roomNumber\": \"102\",\n    \"houseNumber\": \"\",\n    \"houseType\":\"\",\n    \"roomRent\": 2500.00\n  }\n}\n",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://localhost:8082/registrations/onboardUser",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8082",
+          "path": [
+            "registrations",
+            "onboardUser"
+          ]
+        },
+        "description": "This is a POST request, submitting data to an API via the request body. This request submits JSON data, and the data is reflected in the response.\n\nA successful POST request typically returns a `200 OK` or `201 Created` response code."
+      },
+      "response": []
+    },
+    {
+      "name": "onboardUser3",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Successful POST request\", function () {",
+              "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+              "});",
+              ""
+            ],
+            "type": "text/javascript",
+            "packages": {},
+            "requests": {}
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhZG1pbiIsImlhdCI6MTc3MzMzMTU4OSwiZXhwIjoxNzczMzM3NTg5fQ.YjimQdWPx5hzswHH52HNPM83UVMVjeLeBpw42XI-EMU",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"registration\": {\n    \"fname\": \"John2\",\n    \"lname\": \"Doe2\",\n    \"clientUserName\":\"anupama\",\n    \"clientName\":\"elite4colive\",\n    \"email\": \"john1@example.com\",\n    \"contactNo\": \"9976543210\",\n    \"gender\": \"MALE\",\n    \"checkInDate\": \"2026-03-10\",\n    \"checkOutDate\": \"2026-03-20\",\n    \"roomRent\": 2500.00\n  },\n  \"room\": {\n    \"roomType\": \"SINGLE\",\n    \"roomNumber\": \"102\",\n    \"houseNumber\": \"\",\n    \"houseType\":\"\"\n  }\n}\n",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://localhost:8082/registrations/onboardUser",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8082",
+          "path": [
+            "registrations",
+            "onboardUser"
+          ]
+        },
+        "description": "This is a POST request, submitting data to an API via the request body. This request submits JSON data, and the data is reflected in the response.\n\nA successful POST request typically returns a `200 OK` or `201 Created` response code."
+      },
+      "response": []
+    },
+    {
+      "name": "onboardUser4",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Successful POST request\", function () {",
+              "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+              "});",
+              ""
+            ],
+            "type": "text/javascript",
+            "packages": {},
+            "requests": {}
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhZG1pbiIsImlhdCI6MTc3MzMzMTU4OSwiZXhwIjoxNzczMzM3NTg5fQ.YjimQdWPx5hzswHH52HNPM83UVMVjeLeBpw42XI-EMU",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"registration\": {\n    \"fname\": \"John8\",\n    \"lname\": \"Doe6\",\n    \"clientUserName\":\"anupama\",\n    \"clientName\":\"elite4colive\",\n    \"email\": \"john1@example.com\",\n    \"contactNo\": \"9976543200\",\n    \"gender\": \"MALE\",\n    \"checkInDate\": \"2026-03-10\",\n    \"checkOutDate\": \"2026-03-20\",\n    \"roomRent\": 3500.00\n  },\n  \"room\": {\n    \"roomType\": \"SINGLE\",\n    \"roomNumber\": \"102\",\n    \"houseNumber\": \"\",\n    \"houseType\":\"\"\n  }\n}\n",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://localhost:8082/registrations/onboardUser",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8082",
+          "path": [
+            "registrations",
+            "onboardUser"
+          ]
+        },
+        "description": "This is a POST request, submitting data to an API via the request body. This request submits JSON data, and the data is reflected in the response.\n\nA successful POST request typically returns a `200 OK` or `201 Created` response code."
+      },
+      "response": []
+    },
+    {
+      "name": "updateUser",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Successful POST request\", function () {",
+              "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+              "});",
+              ""
+            ],
+            "type": "text/javascript",
+            "packages": {},
+            "requests": {}
+          }
+        }
+      ],
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhZG1pbiIsImlhdCI6MTc3MzMzMTU4OSwiZXhwIjoxNzczMzM3NTg5fQ.YjimQdWPx5hzswHH52HNPM83UVMVjeLeBpw42XI-EMU",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"registration\": {\n    \"fname\": \"John2\",\n    \"lname\": \"Doe2\",\n    \"clientUserName\":\"anupama\",\n    \"clientName\":\"elite4colive\",\n    \"email\": \"john1@example.com\",\n    \"contactNo\": \"8904108571\",\n    \"gender\": \"MALE\",\n    \"checkInDate\": \"2026-03-10\",\n    \"checkOutDate\": \"2026-03-20\",\n       \"roomRent\": 4507.00\n  },\n  \"room\": {\n    \"roomType\": \"SINGLE\",\n    \"roomNumber\": \"102\",\n    \"houseNumber\": \"\",\n    \"houseType\":\"\"\n  }\n}\n",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://localhost:8082/registrations/updateUser/R-8a32ddb8d80d45?changingRoom=True",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8082",
+          "path": [
+            "registrations",
+            "updateUser",
+            "R-8a32ddb8d80d45"
+          ],
+          "query": [
+            {
+              "key": "changingRoom",
+              "value": "True"
+            }
+          ]
+        },
+        "description": "This is a POST request, submitting data to an API via the request body. This request submits JSON data, and the data is reflected in the response.\n\nA successful POST request typically returns a `200 OK` or `201 Created` response code."
+      },
+      "response": []
+    },
+    {
+      "name": "getUser",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Successful POST request\", function () {",
+              "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+              "});",
+              ""
+            ],
+            "type": "text/javascript",
+            "packages": {},
+            "requests": {}
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhZG1pbiIsImlhdCI6MTc3MzMyNzc5MCwiZXhwIjoxNzczMzMzNzkwfQ.HZyFx32ILCH8wuoy4EwZLHFwrOxmQgdupn_x1HSN_rQ",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"registration\": {\n    \"fname\": \"John2\",\n    \"lname\": \"Doe2\",\n    \"clientUserName\":\"anupama\",\n    \"clientName\":\"elite4colive\",\n    \"email\": \"john1@example.com\",\n    \"contactNo\": \"8904108571\",\n    \"gender\": \"MALE\",\n    \"checkInDate\": \"2026-03-10\",\n    \"checkOutDate\": \"2026-03-20\"\n  },\n  \"room\": {\n    \"roomType\": \"SINGLE\",\n    \"roomNumber\": \"102\",\n    \"houseNumber\": \"\",\n    \"houseType\":\"\",\n    \"roomRent\": 1500.0\n  }\n}\n",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://localhost:8082/registrations/user/R-8a32ddb8d80d45",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8082",
+          "path": [
+            "registrations",
+            "user",
+            "R-8a32ddb8d80d45"
+          ]
+        },
+        "description": "This is a POST request, submitting data to an API via the request body. This request submits JSON data, and the data is reflected in the response.\n\nA successful POST request typically returns a `200 OK` or `201 Created` response code."
+      },
+      "response": []
+    },
+    {
+      "name": "getUser Copy",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Successful POST request\", function () {",
+              "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+              "});",
+              ""
+            ],
+            "type": "text/javascript",
+            "packages": {},
+            "requests": {}
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhZG1pbiIsImlhdCI6MTc3MzMyNzc5MCwiZXhwIjoxNzczMzMzNzkwfQ.HZyFx32ILCH8wuoy4EwZLHFwrOxmQgdupn_x1HSN_rQ",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"registration\": {\n    \"fname\": \"John2\",\n    \"lname\": \"Doe2\",\n    \"clientUserName\":\"anupama\",\n    \"clientName\":\"elite4colive\",\n    \"email\": \"john1@example.com\",\n    \"contactNo\": \"8904108571\",\n    \"gender\": \"MALE\",\n    \"checkInDate\": \"2026-03-10\",\n    \"checkOutDate\": \"2026-03-20\"\n  },\n  \"room\": {\n    \"roomType\": \"SINGLE\",\n    \"roomNumber\": \"102\",\n    \"houseNumber\": \"\",\n    \"houseType\":\"\",\n    \"roomRent\": 1500.0\n  }\n}\n",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://localhost:8082/registrations/user/R-8a32ddb8d80d45",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8082",
+          "path": [
+            "registrations",
+            "user",
+            "R-8a32ddb8d80d45"
+          ]
+        },
+        "description": "This is a POST request, submitting data to an API via the request body. This request submits JSON data, and the data is reflected in the response.\n\nA successful POST request typically returns a `200 OK` or `201 Created` response code."
+      },
+      "response": []
+    },
+    {
+      "name": "checkoutByID&Date",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Successful POST request\", function () {",
+              "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+              "});",
+              ""
+            ],
+            "type": "text/javascript",
+            "packages": {},
+            "requests": {}
+          }
+        }
+      ],
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhZG1pbiIsImlhdCI6MTc3MzMzMzgyMCwiZXhwIjoxNzczMzM5ODIwfQ.xPhpj6eMsho01m3V_Gu1LdUwsNhEGwzukXpTpP7X1Kg",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"registrationId\":\"R-8a32ddb8d80d45\",\n  \"checkOutDate\":\"2026-03-20\"\n}\n",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://localhost:8082/registrations/checkout",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8082",
+          "path": [
+            "registrations",
+            "checkout"
+          ]
+        },
+        "description": "This is a POST request, submitting data to an API via the request body. This request submits JSON data, and the data is reflected in the response.\n\nA successful POST request typically returns a `200 OK` or `201 Created` response code."
+      },
+      "response": []
+    },
+    {
+      "name": "checkoutByID&Date Copy",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Successful POST request\", function () {",
+              "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+              "});",
+              ""
+            ],
+            "type": "text/javascript",
+            "packages": {},
+            "requests": {}
+          }
+        }
+      ],
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhZG1pbiIsImlhdCI6MTc3MzMzMzgyMCwiZXhwIjoxNzczMzM5ODIwfQ.xPhpj6eMsho01m3V_Gu1LdUwsNhEGwzukXpTpP7X1Kg",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"registrationId\":\"R-8a32ddb8d80d45\",\n  \"checkOutDate\":\"2026-03-20\"\n}\n",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://localhost:8082/registrations/checkout",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8082",
+          "path": [
+            "registrations",
+            "checkout"
+          ]
+        },
+        "description": "This is a POST request, submitting data to an API via the request body. This request submits JSON data, and the data is reflected in the response.\n\nA successful POST request typically returns a `200 OK` or `201 Created` response code."
+      },
+      "response": []
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "packages": {},
+        "requests": {},
+        "exec": [
+          ""
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "packages": {},
+        "requests": {},
+        "exec": [
+          ""
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "cabID",
+      "value": ""
+    }
+  ]
+}
