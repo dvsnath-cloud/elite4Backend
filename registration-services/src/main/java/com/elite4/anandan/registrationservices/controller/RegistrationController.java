@@ -1,5 +1,6 @@
 package com.elite4.anandan.registrationservices.controller;
 
+import com.elite4.anandan.registrationservices.dto.GetUserInfoByClient;
 import com.elite4.anandan.registrationservices.dto.Registration;
 import com.elite4.anandan.registrationservices.dto.RegistrationWithRoomRequest;
 import com.elite4.anandan.registrationservices.dto.UpdateUserForCheckOut;
@@ -46,6 +47,16 @@ public class RegistrationController {
         return registrationService.updateCheckOutDateByID(updateUserForCheckOut.getRegistrationId(), updateUserForCheckOut.getCheckOutDate(),updateUserForCheckOut.getOccupied())
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
+    }
+
+    @PostMapping("/usersForClient")
+    @PreAuthorize("hasAnyRole('ADMIN','MODERATOR','USER','GUEST')")
+    public ResponseEntity<List<RegistrationWithRoomRequest>> findByClientUserNameAndClientName(@RequestBody GetUserInfoByClient getUserInfoByClient) {
+        List<RegistrationWithRoomRequest> result = registrationService.findByClientUserNameAndClientName(getUserInfoByClient.getClientUserName(), getUserInfoByClient.getClientName());
+        if (result.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.ok(result);
     }
 
     @GetMapping("/user/{id}")

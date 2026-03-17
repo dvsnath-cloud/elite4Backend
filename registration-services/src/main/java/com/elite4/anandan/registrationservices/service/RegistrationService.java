@@ -173,6 +173,12 @@ public class RegistrationService {
                 });
     }
 
+    public List<RegistrationWithRoomRequest> findByClientUserNameAndClientName(String clientUserName, String clientName) {
+        return registrationRepository.findByClientNameAndClientUserName(clientName, clientUserName).stream()
+                .map(this::toDto)
+                .collect(Collectors.toList());
+    }
+
     public Optional<RegistrationWithRoomRequest> findById(String id) {
         return registrationRepository.findById(id).map(this::toDto);
     }
@@ -190,13 +196,15 @@ public class RegistrationService {
     }
 
     public List<RegistrationWithRoomRequest> findAllByRoomNumber(String clientUserName,String clientName,String roomNumber) {
-        return registrationRepository.findByClientUserNameAndClientNameAndRoomRoomNumber(clientUserName,clientName,roomNumber).stream()
+         return registrationRepository.findByClientUserNameAndClientNameAndRoomRoomNumber(clientUserName,clientName,roomNumber).stream()
+                .filter(doc -> doc.getCheckOutDate() == null || doc.getCheckOutDate().toString().isBlank())
                 .map(this::toDto)
                 .collect(Collectors.toList());
     }
 
     public List<RegistrationWithRoomRequest> findAllByHouseNumber(String clientUserName,String clientName,String roomNumber) {
         return registrationRepository.findByClientUserNameAndClientNameAndRoomHouseNumber(clientUserName,clientName,roomNumber).stream()
+                .filter(doc -> doc.getCheckOutDate() == null || doc.getCheckOutDate().toString().isBlank())
                 .map(this::toDto)
                 .collect(Collectors.toList());
     }
@@ -252,6 +260,30 @@ public class RegistrationService {
                 .map(doc -> {
                     doc.setCheckOutDate(checkOutDate);
                     doc.setOccupied(occupied);
+                    if(occupied == Registration.roomOccupied.NOT_OCCUPIED) {
+                        // If the room is being vacated, also update the room's occupied status
+                        Optional<User> clientUser = userRepository.findByclientDetailsClientName(doc.getClientName());
+                        if (clientUser.isPresent()) {
+                            User user = clientUser.get();
+                            Set<ClientAndRoomOnBoardId> clientAndRoomOnBoardIds = user.getClientDetails();
+                            for (ClientAndRoomOnBoardId clientDetail : clientAndRoomOnBoardIds) {
+                                if(clientDetail.getClientName().equals(doc.getClientName())) {
+                                    Optional<RoomOnBoardDocument> roomOnBoardDocument = roomsOrHouseRepository.findById(clientDetail.getRoomOnBoardId());
+                                    if (roomOnBoardDocument.isPresent()) {
+                                        Set<Room> rooms = roomOnBoardDocument.get().getRooms();
+                                        for (Room room : rooms) {
+                                            if ((room.getRoomNumber() != null && room.getRoomNumber().equals(doc.getRoom().getRoomNumber())) ||
+                                                (room.getHouseNumber() != null && room.getHouseNumber().equals(doc.getRoom().getHouseNumber()))) {
+                                                room.setOccupied(Room.roomOccupied.NOT_OCCUPIED);
+                                            }
+                                        }
+                                        roomOnBoardDocument.get().setRooms(rooms);
+                                        roomsOrHouseRepository.save(roomOnBoardDocument.get());
+                                    }
+                                }
+                            }
+                        }
+                    }
                     RegistrationDocument saved = registrationRepository.save(doc);
                     return toDto(saved);
                 });

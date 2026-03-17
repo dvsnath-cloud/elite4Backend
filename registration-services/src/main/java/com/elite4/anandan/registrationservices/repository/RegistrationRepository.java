@@ -2,6 +2,7 @@ package com.elite4.anandan.registrationservices.repository;
 
 import com.elite4.anandan.registrationservices.document.RegistrationDocument;
 import com.elite4.anandan.registrationservices.dto.Registration;
+import com.elite4.anandan.registrationservices.dto.RegistrationWithRoomRequest;
 import org.springframework.data.mongodb.repository.MongoRepository;
 import org.springframework.stereotype.Repository;
 
@@ -12,6 +13,7 @@ import java.util.Optional;
 public interface RegistrationRepository extends MongoRepository<RegistrationDocument, String> {
     Optional<RegistrationDocument> findByEmail(String email);
     Optional<RegistrationDocument> findByContactNo(String contactNo);
+    List<RegistrationDocument> findByClientNameAndClientUserName(String clientName, String clientUserName);
     List<RegistrationDocument> findAllByClientUserNameAndClientNameAndRoomRoomType(String clientUserName,String clientName,String roomType);
     List<RegistrationDocument> findAllByClientUserNameAndClientNameAndRoomHouseType(String clientUserName,String clientName,String houseType);
     List<RegistrationDocument> findAllByGender(Registration.Gender gender);
