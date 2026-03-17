@@ -91,19 +91,19 @@ public class RegistrationController {
         return registrationService.findAllByHouseNumber(clientUserName, clientName,houseNumber);
     }
 
-    @GetMapping("/user/room/{roomType}")
+    /*@GetMapping("/user/room/{roomType}")
     @PreAuthorize("hasAnyRole('ADMIN','MODERATOR')")
     public List<RegistrationWithRoomRequest> findAllByRoomType(@RequestParam String clientUserName,
                                                 @RequestParam String clientName,@PathVariable String roomType) {
         return registrationService.findAllByRoomType(clientUserName,clientName,roomType);
-    }
+    }*/
 
-    @GetMapping("/user/house/{houseType}")
+   /* @GetMapping("/user/house/{houseType}")
     @PreAuthorize("hasAnyRole('ADMIN','MODERATOR')")
     public List<RegistrationWithRoomRequest> findAllByHouseType(@RequestParam String clientUserName,
                                                  @RequestParam String clientName,@PathVariable String houseType) {
         return registrationService.findAllByHouseType(clientUserName,clientName,houseType);
-    }
+    }*/
 
     @GetMapping("/gender/{gender}")
     @PreAuthorize("hasAnyRole('ADMIN','MODERATOR')")

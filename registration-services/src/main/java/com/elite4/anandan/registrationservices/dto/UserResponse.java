@@ -16,6 +16,7 @@ public class UserResponse {
     private Instant createdAt;
     private Instant updatedAt;
     private Instant lastLoginAt;
+    private String phoneNumber;
     private Set<ClientNameAndRooms> clientNameAndRooms;
 
     public String getId() {
@@ -88,5 +89,13 @@ public class UserResponse {
 
     public void setClientNameAndRooms(Set<ClientNameAndRooms> clientNameAndRooms) {
         this.clientNameAndRooms = clientNameAndRooms;
+    }
+
+    public String getPhoneNumber() {
+        return phoneNumber;
+    }
+
+    public void setPhoneNumber(String phoneNumber) {
+        this.phoneNumber = phoneNumber;
     }
 }

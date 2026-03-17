@@ -416,6 +416,7 @@ public class UserCreationService {
         response.setCreatedAt(user.getCreatedAt());
         response.setUpdatedAt(user.getUpdatedAt());
         response.setLastLoginAt(user.getLastLoginAt());
+        response.setPhoneNumber(user.getPhoneRaw());
         Set<ClientNameAndRooms> clientNameAndRoomsSet = new HashSet<>();
         Set<ClientAndRoomOnBoardId> clientAndRoomOnBoardIds = user.getClientDetails();
         if (clientAndRoomOnBoardIds != null) {
