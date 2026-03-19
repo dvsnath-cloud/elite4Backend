@@ -181,6 +181,7 @@ public class UserCreationService {
         user.setPhoneE164(phoneService.toE164(request.getPhoneNumber()));
         user.setPhoneRaw(request.getPhoneNumber());
         user.setClientDetails(clientAndRoomOnBoardIdsSet);
+        user.setActive(request.isActive());
         User saved = userRepository.save(user);
         UserResponse response = toUserResponse(saved);
 

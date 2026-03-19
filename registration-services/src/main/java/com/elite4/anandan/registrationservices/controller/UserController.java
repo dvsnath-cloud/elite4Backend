@@ -124,7 +124,7 @@ public class UserController {
      * Requires ADMIN or MODERATOR role.
      */
     @GetMapping("/admin/user/{username}")
-    @PreAuthorize("hasAnyRole('ADMIN','MODERATOR')")
+    @PreAuthorize("hasAnyRole('USER','ADMIN','MODERATOR')")
     public ResponseEntity<?> getUserByUsername(@PathVariable String username) {
         Optional<User> userOpt = userRepository.findByUsername(username);
         return userOpt.map(user -> ResponseEntity.ok(adminService.toUserResponse(user)))

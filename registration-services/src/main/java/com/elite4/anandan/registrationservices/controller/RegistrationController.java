@@ -25,7 +25,7 @@ public class RegistrationController {
     private final RegistrationService registrationService;
 
     @PostMapping("/onboardUser")
-    @PreAuthorize("hasAnyRole('ADMIN','MODERATOR')")
+    @PreAuthorize("hasAnyRole('USER','ADMIN','MODERATOR')")
     public ResponseEntity<RegistrationWithRoomRequest> create(@RequestBody RegistrationWithRoomRequest request) {
         RegistrationWithRoomRequest created = registrationService.create(
                 request.getRegistration(),
@@ -34,7 +34,7 @@ public class RegistrationController {
     }
 
     @PutMapping("/updateUser/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN','MODERATOR')")
+    @PreAuthorize("hasAnyRole('USER','ADMIN','MODERATOR')")
     public ResponseEntity<RegistrationWithRoomRequest> update(@PathVariable String id,@RequestBody RegistrationWithRoomRequest request,@RequestParam Boolean changingRoom) {
         return registrationService.update(id, request.getRegistration(),request.getRoom(),changingRoom)
                 .map(ResponseEntity::ok)
