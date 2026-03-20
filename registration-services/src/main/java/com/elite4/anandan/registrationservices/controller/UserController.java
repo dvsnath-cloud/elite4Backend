@@ -8,12 +8,14 @@ import com.elite4.anandan.registrationservices.service.AdminService;
 import com.elite4.anandan.registrationservices.service.AuthService;
 import com.elite4.anandan.registrationservices.service.UserCreationService;
 import jakarta.validation.Valid;
+import org.apache.logging.log4j.util.Strings;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * REST controller exposing auth-related APIs such as signup and login.
@@ -126,9 +128,7 @@ public class UserController {
     @GetMapping("/admin/user/{username}")
     @PreAuthorize("hasAnyRole('USER','ADMIN','MODERATOR')")
     public ResponseEntity<?> getUserByUsername(@PathVariable String username) {
-        Optional<User> userOpt = userRepository.findByUsername(username);
-        return userOpt.map(user -> ResponseEntity.ok(adminService.toUserResponse(user)))
-                .orElse(ResponseEntity.notFound().build());
+        return ResponseEntity.ok(adminService.getUserWithRoles(username));
     }
 
     /**

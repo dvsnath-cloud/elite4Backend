@@ -44,6 +44,26 @@ public class AdminService {
                 .collect(Collectors.toList());
     }
 
+    public UserResponse getUserWithRoles(String username){
+        User activeUsers = userRepository.findAll()
+                .stream()
+                .filter(User::isActive)
+                .filter(u -> u.getUsername().equals(username))
+                .findFirst()
+                .orElse(null);
+        List<String> roleNames =  new ArrayList<>();
+        assert activeUsers != null;
+        Set<String> roleIds =  activeUsers.getRoleIds();
+        for(String roleId : roleIds) {
+            if(roleRepository.existsById(roleId)) {
+                roleRepository.findById(roleId).ifPresent(role -> {
+                    roleNames.add(role.getName().toString());
+                });
+            }
+        }
+        return toUserResponseWithRoleNames(activeUsers,roleNames);
+    }
+
     /**
      * Get all active users.
      */
@@ -150,6 +170,12 @@ public class AdminService {
         return userRepository.findById(userId)
                 .map(user -> ResponseEntity.ok(toUserResponse(user)))
                 .orElse(ResponseEntity.notFound().build());
+    }
+
+    public UserResponse toUserResponseWithRoleNames(User user,List<String> roleNames) {
+        UserResponse response = toUserResponse(user);
+        response.setRoleNames(roleNames);
+        return response;
     }
 
     public UserResponse toUserResponse(User user) {

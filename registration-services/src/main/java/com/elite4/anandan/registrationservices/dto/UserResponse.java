@@ -1,6 +1,7 @@
 package com.elite4.anandan.registrationservices.dto;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -18,6 +19,7 @@ public class UserResponse {
     private Instant lastLoginAt;
     private String phoneNumber;
     private Set<ClientNameAndRooms> clientNameAndRooms;
+    private List<String> roleNames;
 
     public String getId() {
         return id;
@@ -97,5 +99,13 @@ public class UserResponse {
 
     public void setPhoneNumber(String phoneNumber) {
         this.phoneNumber = phoneNumber;
+    }
+
+    public List<String> getRoleNames() {
+        return roleNames;
+    }
+
+    public void setRoleNames(List<String> roleNames) {
+        this.roleNames = roleNames;
     }
 }
