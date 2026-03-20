@@ -13,6 +13,8 @@ import com.elite4.anandan.registrationservices.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.retry.annotation.Backoff;
 import org.springframework.retry.annotation.Recover;
@@ -29,7 +31,7 @@ public class RegistrationService {
     private final RegistrationRepository registrationRepository;
     private final NotificationClient notificationClient;
     private final UserRepository userRepository;
-    private final RoomsOrHouseRepository  roomsOrHouseRepository;
+    private final RoomsOrHouseRepository roomsOrHouseRepository;
 
     public RegistrationWithRoomRequest create(Registration dto, Room room) {
         // Validate that clientUserName is provided (required field)
@@ -47,106 +49,117 @@ public class RegistrationService {
                             "', and contactNo '" + dto.getContactNo() + "'"
             );
         }
-
-        // Validate that only one of room number or house number is provided
-        if ((room.getRoomNumber() != null && !room.getRoomNumber().trim().isEmpty()) &&
-            (room.getHouseNumber() != null && !room.getHouseNumber().trim().isEmpty())) {
-            throw new IllegalArgumentException("Both room number and house number cannot be provided together");
-        } else if ((room.getRoomNumber() == null || room.getRoomNumber().trim().isEmpty()) &&
-                   (room.getHouseNumber() == null || room.getHouseNumber().trim().isEmpty())) {
-            throw new IllegalArgumentException("Either room number or house number must be provided");
+        String role = "";
+        if (SecurityContextHolder.getContext().getAuthentication() != null) {
+            Authentication authenticationnew = SecurityContextHolder.getContext().getAuthentication();
+            //get role from authenticationnew
+            role = authenticationnew.getAuthorities().stream()
+                    .map(grantedAuthority -> grantedAuthority.getAuthority())
+                    .filter(auth -> auth.startsWith("ROLE_"))
+                    .findFirst()
+                    .orElse("ROLE_USER");
         }
-
-        // Validate that clientUsername exists in UserRepository
-        Optional<User> clientUser = userRepository.findByUsername(dto.getClientUserName());
-        if (clientUser.isEmpty()) {
-            throw new IllegalArgumentException(
-                "Client username '" + dto.getClientUserName() + "' does not exist in the system. Please create a user with this client name first."
-            );
-        }
-
-        // Validate that the provided room number/house number exists for this client
-        User user = clientUser.get();
-        Set<ClientAndRoomOnBoardId> clientAndRoomOnBoardIds = user.getClientDetails();
-
-        if (clientAndRoomOnBoardIds == null || clientAndRoomOnBoardIds.isEmpty()) {
-            throw new IllegalArgumentException(
-                "Client username '" + dto.getClientUserName() + "' does not have any rooms assigned"
-            );
-        }
-
-        boolean roomFound = false;
-        StringBuilder availableRooms = new StringBuilder();
         String id = null;
-        for (ClientAndRoomOnBoardId clientDetail : clientAndRoomOnBoardIds) {
-            if(clientDetail.getClientName().equals(dto.getClientName())) {
-                if (clientDetail.getRoomOnBoardId() == null) {
-                    continue;
-                }
+        if (!role.equals("ROLE_USER")) {
+            // Validate that only one of room number or house number is provided
+            if ((room.getRoomNumber() != null && !room.getRoomNumber().trim().isEmpty()) &&
+                    (room.getHouseNumber() != null && !room.getHouseNumber().trim().isEmpty())) {
+                throw new IllegalArgumentException("Both room number and house number cannot be provided together");
+            } else if ((room.getRoomNumber() == null || room.getRoomNumber().trim().isEmpty()) &&
+                    (room.getHouseNumber() == null || room.getHouseNumber().trim().isEmpty())) {
+                throw new IllegalArgumentException("Either room number or house number must be provided");
+            }
 
-                Optional<RoomOnBoardDocument> roomOnBoardDocument = roomsOrHouseRepository.findById(clientDetail.getRoomOnBoardId());
+            // Validate that clientUsername exists in UserRepository
+            Optional<User> clientUser = userRepository.findByUsername(dto.getClientUserName());
+            if (clientUser.isEmpty()) {
+                throw new IllegalArgumentException(
+                        "Client username '" + dto.getClientUserName() + "' does not exist in the system. Please create a user with this client name first."
+                );
+            }
 
-                if (roomOnBoardDocument.isPresent()) {
-                    Set<Room> rooms = roomOnBoardDocument.get().getRooms();
+            // Validate that the provided room number/house number exists for this client
+            User user = clientUser.get();
+            Set<ClientAndRoomOnBoardId> clientAndRoomOnBoardIds = user.getClientDetails();
 
-                    // Debug logging to check if rooms are loaded
-                    log.info("Found RoomOnBoardDocument with ID: {}, rooms count: {}",
-                             clientDetail.getRoomOnBoardId(),
-                             rooms != null ? rooms.size() : 0);
+            if (clientAndRoomOnBoardIds == null || clientAndRoomOnBoardIds.isEmpty()) {
+                throw new IllegalArgumentException(
+                        "Client username '" + dto.getClientUserName() + "' does not have any rooms assigned"
+                );
+            }
 
-                    if (rooms == null || rooms.isEmpty()) {
-                        log.warn("RoomOnBoardDocument {} has no rooms assigned", clientDetail.getRoomOnBoardId());
+            boolean roomFound = false;
+            StringBuilder availableRooms = new StringBuilder();
+            for (ClientAndRoomOnBoardId clientDetail : clientAndRoomOnBoardIds) {
+                if (clientDetail.getClientName().equals(dto.getClientName())) {
+                    if (clientDetail.getRoomOnBoardId() == null) {
                         continue;
                     }
 
-                    for (Room availableRoom : rooms) {
-                        // Check if the provided room number matches
-                        if (room.getRoomNumber() != null &&
-                                !room.getRoomNumber().isBlank() &&
-                                availableRoom.getRoomNumber()!=null&&
-                                availableRoom.getRoomNumber().equals(room.getRoomNumber().trim().toString())) {
-                            availableRooms.append(availableRoom.getRoomNumber()).append(" ");
-                            log.info("Provided room number '{}' exists with client '{}' - proceeding with registration",
-                                    room.getRoomNumber(), dto.getClientUserName());
-                            roomFound = true;
-                            id = "R" + "-" + UUID.randomUUID().toString().replace("-", "").substring(0, 14);
-                            room.setOccupied(Room.roomOccupied.OCCUPIED);
-                            availableRoom.setOccupied(Room.roomOccupied.OCCUPIED);
-                            rooms.add(availableRoom);
-                            break;
-                        }
-                        // Check if the provided house number matches
-                        else if (room.getHouseNumber() != null &&
-                                !room.getHouseNumber().isBlank() &&
-                                availableRoom.getHouseNumber()!=null &&
-                                availableRoom.getHouseNumber().equals(room.getHouseNumber())) {
-                            availableRooms.append(availableRoom.getHouseNumber()).append(" ");
-                            log.info("Provided house number '{}' exists with client '{}' - proceeding with registration",
-                                    room.getHouseNumber(), dto.getClientUserName());
-                            roomFound = true;
-                            id = "H" + "-" + UUID.randomUUID().toString().replace("-", "").substring(0, 14);
-                            room.setOccupied(Room.roomOccupied.OCCUPIED);
-                            availableRoom.setOccupied(Room.roomOccupied.OCCUPIED);
-                            rooms.add(availableRoom);
-                            break;
-                        }
-                    }
+                    Optional<RoomOnBoardDocument> roomOnBoardDocument = roomsOrHouseRepository.findById(clientDetail.getRoomOnBoardId());
 
-                    if (roomFound) {
-                        roomOnBoardDocument.get().setRooms(rooms);
-                        roomsOrHouseRepository.save(roomOnBoardDocument.get());
-                        break;
+                    if (roomOnBoardDocument.isPresent()) {
+                        Set<Room> rooms = roomOnBoardDocument.get().getRooms();
+
+                        // Debug logging to check if rooms are loaded
+                        log.info("Found RoomOnBoardDocument with ID: {}, rooms count: {}",
+                                clientDetail.getRoomOnBoardId(),
+                                rooms != null ? rooms.size() : 0);
+
+                        if (rooms == null || rooms.isEmpty()) {
+                            log.warn("RoomOnBoardDocument {} has no rooms assigned", clientDetail.getRoomOnBoardId());
+                            continue;
+                        }
+
+                        for (Room availableRoom : rooms) {
+                            // Check if the provided room number matches
+                            if (room.getRoomNumber() != null &&
+                                    !room.getRoomNumber().isBlank() &&
+                                    availableRoom.getRoomNumber() != null &&
+                                    availableRoom.getRoomNumber().equals(room.getRoomNumber().trim().toString())) {
+                                availableRooms.append(availableRoom.getRoomNumber()).append(" ");
+                                log.info("Provided room number '{}' exists with client '{}' - proceeding with registration",
+                                        room.getRoomNumber(), dto.getClientUserName());
+                                roomFound = true;
+                                id = "R" + "-" + UUID.randomUUID().toString().replace("-", "").substring(0, 14);
+                                room.setOccupied(Room.roomOccupied.OCCUPIED);
+                                availableRoom.setOccupied(Room.roomOccupied.OCCUPIED);
+                                rooms.add(availableRoom);
+                                break;
+                            }
+                            // Check if the provided house number matches
+                            else if (room.getHouseNumber() != null &&
+                                    !room.getHouseNumber().isBlank() &&
+                                    availableRoom.getHouseNumber() != null &&
+                                    availableRoom.getHouseNumber().equals(room.getHouseNumber())) {
+                                availableRooms.append(availableRoom.getHouseNumber()).append(" ");
+                                log.info("Provided house number '{}' exists with client '{}' - proceeding with registration",
+                                        room.getHouseNumber(), dto.getClientUserName());
+                                roomFound = true;
+                                id = "H" + "-" + UUID.randomUUID().toString().replace("-", "").substring(0, 14);
+                                room.setOccupied(Room.roomOccupied.OCCUPIED);
+                                availableRoom.setOccupied(Room.roomOccupied.OCCUPIED);
+                                rooms.add(availableRoom);
+                                break;
+                            }
+                        }
+
+                        if (roomFound) {
+                            roomOnBoardDocument.get().setRooms(rooms);
+                            roomsOrHouseRepository.save(roomOnBoardDocument.get());
+                            break;
+                        }
                     }
                 }
             }
-        }
 
-        if (!roomFound) {
-            String roomIdentifier = room.getRoomNumber() != null ? room.getRoomNumber() : room.getHouseNumber();
-            throw new IllegalArgumentException(
-                "Room/House number '" + roomIdentifier + "' is not associated with client '" + dto.getClientUserName() +
-                "'. Available rooms: " + (availableRooms.length() > 0 ? availableRooms.toString().trim() : "None")
-            );
+            if (!roomFound) {
+                String roomIdentifier = room.getRoomNumber() != null ? room.getRoomNumber() : room.getHouseNumber();
+                throw new IllegalArgumentException(
+                        "Room/House number '" + roomIdentifier + "' is not associated with client '" + dto.getClientUserName() +
+                                "'. Available rooms: " + (availableRooms.length() > 0 ? availableRooms.toString().trim() : "None")
+                );
+            }
         }
 
         // Proceed with registration
@@ -159,13 +172,17 @@ public class RegistrationService {
         return toDto(doc);
     }
 
-    public Optional<RegistrationWithRoomRequest> update(String id, Registration dto, Room room,Boolean changingRoom ) {
+    public Optional<RegistrationWithRoomRequest> update(String id, Registration dto, Room room, Boolean changingRoom) {
         return registrationRepository.findById(id)
                 .map(existing -> {
                     RegistrationDocument doc = toDocument(dto, room);
                     doc.setId(id);
                     if (existing.getRoom() != null && !changingRoom) doc.setRoom(existing.getRoom());
-                    else {doc.setRoom(room);doc.setId("U"+ "-" + UUID.randomUUID().toString().replace("-", "").substring(0, 14));};
+                    else {
+                        doc.setRoom(room);
+                        doc.setId("U" + "-" + UUID.randomUUID().toString().replace("-", "").substring(0, 14));
+                    }
+                    ;
                     if (existing.getOccupied() != null) doc.setOccupied(existing.getOccupied());
                     doc = registrationRepository.save(doc);
                     registrationRepository.deleteById(id);
@@ -195,26 +212,26 @@ public class RegistrationService {
         return registrationRepository.findAll().stream().map(this::toDto).collect(Collectors.toList());
     }
 
-    public List<RegistrationWithRoomRequest> findAllByRoomNumber(String clientUserName,String clientName,String roomNumber) {
-         return registrationRepository.findByClientUserNameAndClientNameAndRoomRoomNumber(clientUserName,clientName,roomNumber).stream()
+    public List<RegistrationWithRoomRequest> findAllByRoomNumber(String clientUserName, String clientName, String roomNumber) {
+        return registrationRepository.findByClientUserNameAndClientNameAndRoomRoomNumber(clientUserName, clientName, roomNumber).stream()
                 .filter(doc -> doc.getCheckOutDate() == null || doc.getCheckOutDate().toString().isBlank())
                 .map(this::toDto)
                 .collect(Collectors.toList());
     }
 
-    public List<RegistrationWithRoomRequest> findAllByHouseNumber(String clientUserName,String clientName,String roomNumber) {
-        return registrationRepository.findByClientUserNameAndClientNameAndRoomHouseNumber(clientUserName,clientName,roomNumber).stream()
+    public List<RegistrationWithRoomRequest> findAllByHouseNumber(String clientUserName, String clientName, String roomNumber) {
+        return registrationRepository.findByClientUserNameAndClientNameAndRoomHouseNumber(clientUserName, clientName, roomNumber).stream()
                 .filter(doc -> doc.getCheckOutDate() == null || doc.getCheckOutDate().toString().isBlank())
                 .map(this::toDto)
                 .collect(Collectors.toList());
     }
 
-    public List<RegistrationWithRoomRequest> findAllByRoomType(String clientUserName,String clientName,String roomType) {
-        return registrationRepository.findAllByClientUserNameAndClientNameAndRoomRoomType(clientUserName,clientName,roomType).stream().map(this::toDto).collect(Collectors.toList());
+    public List<RegistrationWithRoomRequest> findAllByRoomType(String clientUserName, String clientName, String roomType) {
+        return registrationRepository.findAllByClientUserNameAndClientNameAndRoomRoomType(clientUserName, clientName, roomType).stream().map(this::toDto).collect(Collectors.toList());
     }
 
-    public List<RegistrationWithRoomRequest> findAllByHouseType(String clientUserName,String clientName,String houseType) {
-        return registrationRepository.findAllByClientUserNameAndClientNameAndRoomHouseType(clientUserName,clientName,houseType).stream().map(this::toDto).collect(Collectors.toList());
+    public List<RegistrationWithRoomRequest> findAllByHouseType(String clientUserName, String clientName, String houseType) {
+        return registrationRepository.findAllByClientUserNameAndClientNameAndRoomHouseType(clientUserName, clientName, houseType).stream().map(this::toDto).collect(Collectors.toList());
     }
 
     public List<RegistrationWithRoomRequest> findAllByGender(Registration.Gender gender) {
@@ -255,25 +272,25 @@ public class RegistrationService {
      * @param checkOutDate new checkout date to set
      * @return the updated registration if found, empty otherwise
      */
-    public Optional<RegistrationWithRoomRequest> updateCheckOutDateByID(String id, Date checkOutDate,Registration.roomOccupied occupied) {
+    public Optional<RegistrationWithRoomRequest> updateCheckOutDateByID(String id, Date checkOutDate, Registration.roomOccupied occupied) {
         return registrationRepository.findById(id)
                 .map(doc -> {
                     doc.setCheckOutDate(checkOutDate);
                     doc.setOccupied(occupied);
-                    if(occupied == Registration.roomOccupied.NOT_OCCUPIED) {
+                    if (occupied == Registration.roomOccupied.NOT_OCCUPIED) {
                         // If the room is being vacated, also update the room's occupied status
                         Optional<User> clientUser = userRepository.findByclientDetailsClientName(doc.getClientName());
                         if (clientUser.isPresent()) {
                             User user = clientUser.get();
                             Set<ClientAndRoomOnBoardId> clientAndRoomOnBoardIds = user.getClientDetails();
                             for (ClientAndRoomOnBoardId clientDetail : clientAndRoomOnBoardIds) {
-                                if(clientDetail.getClientName().equals(doc.getClientName())) {
+                                if (clientDetail.getClientName().equals(doc.getClientName())) {
                                     Optional<RoomOnBoardDocument> roomOnBoardDocument = roomsOrHouseRepository.findById(clientDetail.getRoomOnBoardId());
                                     if (roomOnBoardDocument.isPresent()) {
                                         Set<Room> rooms = roomOnBoardDocument.get().getRooms();
                                         for (Room room : rooms) {
                                             if ((room.getRoomNumber() != null && room.getRoomNumber().equals(doc.getRoom().getRoomNumber())) ||
-                                                (room.getHouseNumber() != null && room.getHouseNumber().equals(doc.getRoom().getHouseNumber()))) {
+                                                    (room.getHouseNumber() != null && room.getHouseNumber().equals(doc.getRoom().getHouseNumber()))) {
                                                 room.setOccupied(Room.roomOccupied.NOT_OCCUPIED);
                                             }
                                         }
@@ -326,8 +343,8 @@ public class RegistrationService {
         return registrationRepository.existsById(id);
     }
 
-    private RegistrationDocument toDocumentWithId(String id,Registration dto, Room room) {
-        RegistrationDocument registrationDocument =  toDocument(dto, room);
+    private RegistrationDocument toDocumentWithId(String id, Registration dto, Room room) {
+        RegistrationDocument registrationDocument = toDocument(dto, room);
         registrationDocument.setId(id);
         registrationDocument.setOccupied(Registration.roomOccupied.OCCUPIED);
         return registrationDocument;
