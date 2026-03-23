@@ -108,32 +108,35 @@ public class UserCreationService {
             if (request.getPhoneNumber() != null) {
                 try{
                     String e164 = phoneService.toE164(request.getPhoneNumber());
-                    if(!e164.isBlank()) request.setPhoneNumber(e164);
-                    else return ResponseEntity.badRequest()
-                            .body("Invalid phone number format: " + request.getPhoneNumber());
+                    if(e164 != null && !e164.isBlank()) {
+                        request.setPhoneNumber(e164);
+                        Optional<User> existingUserByPhone = userRepository.findByPhoneE164(e164);
+                        if (existingUserByPhone.isPresent()) {
+                            Set<String> existingClientNames = existingUserByPhone.get().getClientDetails().stream()
+                                    .map(ClientAndRoomOnBoardId::getClientName)
+                                    .collect(java.util.stream.Collectors.toSet());
+
+                            // Check for exact match
+                            if (existingClientNames.equals(requestClientNames)) {
+                                return ResponseEntity.badRequest()
+                                        .body("Phone number '" + request.getPhoneNumber() + "' is already onboarded with the exact same set of client names: " + requestClientNames);
+                            }
+
+                            // Check for partial overlap (intersection)
+                            Set<String> overlap = new HashSet<>(existingClientNames);
+                            overlap.retainAll(requestClientNames);
+                            if (!overlap.isEmpty()) {
+                                return ResponseEntity.badRequest()
+                                        .body("Phone number '" + request.getPhoneNumber() + "' is already onboarded with overlapping client names: " + overlap);
+                            }
+                        }
+                    } else {
+                        return ResponseEntity.badRequest()
+                                .body("Invalid phone number format: " + request.getPhoneNumber());
+                    }
                 }catch (IllegalArgumentException e){
                     return ResponseEntity.badRequest()
                             .body("Invalid phone number format: " + request.getPhoneNumber());
-                }
-                Optional<User> existingUserByPhone = userRepository.findByPhoneE164(request.getPhoneNumber());
-                if (existingUserByPhone.isPresent() && (!existingUserByPhone.isEmpty())) {
-                    Set<String> existingClientNames = existingUserByPhone.get().getClientDetails().stream()
-                            .map(ClientAndRoomOnBoardId::getClientName)
-                            .collect(java.util.stream.Collectors.toSet());
-
-                    // Check for exact match
-                    if (existingClientNames.equals(requestClientNames)) {
-                        return ResponseEntity.badRequest()
-                                .body("Phone number '" + request.getPhoneNumber() + "' is already onboarded with the exact same set of client names: " + requestClientNames);
-                    }
-
-                    // Check for partial overlap (intersection)
-                    Set<String> overlap = new HashSet<>(existingClientNames);
-                    overlap.retainAll(requestClientNames);
-                    if (!overlap.isEmpty()) {
-                        return ResponseEntity.badRequest()
-                                .body("Phone number '" + request.getPhoneNumber() + "' is already onboarded with overlapping client names: " + overlap);
-                    }
                 }
             }
 
@@ -163,6 +166,7 @@ public class UserCreationService {
                 }
                 clientAndRoomOnBoardId.setClientName(clientName.getClientName());
                 clientAndRoomOnBoardId.setClientCategory(String.valueOf(clientName.getCategoryType()));
+                clientAndRoomOnBoardId.setBankDetails(clientName.getBankDetails());
                 clientAndRoomOnBoardIdsSet.add(clientAndRoomOnBoardId);
             }
         }
@@ -181,13 +185,44 @@ public class UserCreationService {
         user.setPhoneE164(phoneService.toE164(request.getPhoneNumber()));
         user.setPhoneRaw(request.getPhoneNumber());
         user.setClientDetails(clientAndRoomOnBoardIdsSet);
-        user.setActive(request.isActive());
-        User saved = userRepository.save(user);
-        UserResponse response = toUserResponse(saved);
+        if(request.getRoleIds().contains("ROLE_USER")) {
+            user.setActive(true);
+        }
+        try {
+            User saved = userRepository.save(user);
+            UserResponse response = toUserResponse(saved);
+            return ResponseEntity
+                    .status(HttpStatus.CREATED)
+                    .body(response);
+        } catch (DuplicateKeyException e) {
+            // Handle duplicate key exception with a more informative message
+            String errorMessage = e.getMessage();
+            String details = "A user with this information already exists";
 
-        return ResponseEntity
-                .status(HttpStatus.CREATED)
-                .body(response);
+            if (errorMessage != null) {
+                if (errorMessage.contains("username")) {
+                    details = "Username '" + request.getUsername() + "' is already onboarded with the exact same set of client names: " +
+                            request.getClientDetails().stream()
+                                .map(ClientNameAndRooms::getClientName)
+                                .collect(java.util.stream.Collectors.toSet());
+                } else if (errorMessage.contains("email")) {
+                    details = "Email '" + request.getEmail() + "' is already onboarded with the exact same set of client names: " +
+                            request.getClientDetails().stream()
+                                .map(ClientNameAndRooms::getClientName)
+                                .collect(java.util.stream.Collectors.toSet());
+                } else if (errorMessage.contains("phoneE164")) {
+                    details = "Phone number '" + request.getPhoneNumber() + "' is already onboarded with the exact same set of client names: " +
+                            request.getClientDetails().stream()
+                                .map(ClientNameAndRooms::getClientName)
+                                .collect(java.util.stream.Collectors.toSet());
+                } else if (errorMessage.contains("ownerOfClient")) {
+                    details = "Owner of client '" + request.getOwnerOfClient() + "' is already registered in the system";
+                }
+            }
+
+            return ResponseEntity.badRequest()
+                    .body(details);
+        }
     }
 
     public ResponseEntity<?> addClientToExistUser(AddClientToUser request) {
@@ -223,24 +258,27 @@ public class UserCreationService {
         if (request.getPhoneNumber() != null) {
             try{
                 String e164 = phoneService.toE164(request.getPhoneNumber());
-                if(!e164.isBlank()) request.setPhoneNumber(e164);
-                else return ResponseEntity.badRequest()
-                        .body("Invalid phone number format: " + request.getPhoneNumber());
+                if(e164 != null && !e164.isBlank()) {
+                    request.setPhoneNumber(e164);
+                    Optional<User> existingUserByPhone = userRepository.findByPhoneE164(e164);
+                    if (existingUserByPhone.isPresent()) {
+                        Set<String> existingClientNames = existingUserByPhone.get().getClientDetails().stream()
+                                .map(ClientAndRoomOnBoardId::getClientName)
+                                .collect(java.util.stream.Collectors.toSet());
+
+                        // Check for exact match
+                        if (existingClientNames.contains(request.getClientName())) {
+                            return ResponseEntity.badRequest()
+                                    .body("Phone number '" + request.getPhoneNumber() + "' is already onboarded with the exact same set of client names: " + request.getClientName());
+                        }
+                    }
+                } else {
+                    return ResponseEntity.badRequest()
+                            .body("Invalid phone number format: " + request.getPhoneNumber());
+                }
             }catch (Exception e){
                 return ResponseEntity.badRequest()
                         .body("Invalid phone number format: " + request.getPhoneNumber());
-            }
-            Optional<User> existingUserByPhone = userRepository.findByPhoneE164(request.getPhoneNumber());
-            if (existingUserByPhone.isPresent() && (!existingUserByPhone.isEmpty())) {
-                Set<String> existingClientNames = existingUserByPhone.get().getClientDetails().stream()
-                        .map(ClientAndRoomOnBoardId::getClientName)
-                        .collect(java.util.stream.Collectors.toSet());
-
-                // Check for exact match
-                if (existingClientNames.contains(request.getClientName())) {
-                    return ResponseEntity.badRequest()
-                            .body("Phone number '" + request.getPhoneNumber() + "' is already onboarded with the exact same set of client names: " + request.getClientName());
-                }
             }
         }
 
@@ -267,6 +305,7 @@ public class UserCreationService {
         }
         clientAndRoomOnBoardId.setClientName(request.getClientName());
         clientAndRoomOnBoardId.setClientCategory(String.valueOf(request.getCategoryType()));
+        clientAndRoomOnBoardId.setBankDetails(request.getBankDetails());
         clientAndRoomOnBoardIdsSet.add(clientAndRoomOnBoardId);
 
         // Find user and add client
@@ -443,6 +482,7 @@ public class UserCreationService {
                 clientNameAndRooms.setRooms(roomNumbers);
                 String category = clientAndRoomOnBoardId.getClientCategory();
                 clientNameAndRooms.setCategoryType(ClientNameAndRooms.categoryValues.valueOf(category));
+                clientNameAndRooms.setBankDetails(clientAndRoomOnBoardId.getBankDetails());
                 clientNameAndRoomsSet.add(clientNameAndRooms);
             }
         }
@@ -452,19 +492,27 @@ public class UserCreationService {
 
 
     public Optional<User> findByPhone(String rawPhone) {
+        if (rawPhone == null || rawPhone.isBlank()) {
+            return Optional.empty();
+        }
         String e164 = phoneService.toE164(rawPhone);
-        if (e164 == null) return Optional.empty();
+        if (e164 == null || e164.isBlank()) {
+            return Optional.empty();
+        }
         return userRepository.findByPhoneE164(e164);
     }
 
 
     public boolean existsPhoneNumberWithRawMatch(String rawPhone) {
+        if (rawPhone == null || rawPhone.isBlank()) {
+            return false;
+        }
         String e164 = phoneService.toE164(rawPhone);
-        if (e164 == null) {
+        if (e164 == null || e164.isBlank()) {
             return false;
         }
         return userRepository.findByPhoneE164(e164)
-                .map(u -> rawPhone != null && rawPhone.equals(u.getPhoneRaw()))
+                .map(u -> rawPhone.equals(u.getPhoneRaw()))
                 .orElse(false);
     }
 

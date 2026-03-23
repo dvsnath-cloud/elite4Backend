@@ -1,5 +1,6 @@
 package com.elite4.anandan.registrationservices.exception;
 
+import com.mongodb.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -16,6 +17,42 @@ import java.util.Map;
  */
 @ControllerAdvice
 public class GlobalExceptionHandler {
+
+    /**
+     * Handles DuplicateKeyException from MongoDB.
+     * Extracts the field name from the error message and returns a user-friendly message.
+     * Returns 400 Bad Request.
+     * This must be BEFORE the generic Exception handler to take precedence.
+     */
+    @ExceptionHandler(DuplicateKeyException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public ResponseEntity<Map<String, Object>> handleDuplicateKeyException(DuplicateKeyException ex) {
+        Map<String, Object> response = new HashMap<>();
+        response.put("status", HttpStatus.BAD_REQUEST.value());
+        response.put("message", "Bad Request - Validation Failed");
+
+        String errorMessage = ex.getMessage();
+        String details = "Duplicate entry detected";
+
+        // Extract field name from MongoDB error message
+        // MongoDB error format typically contains field information
+        if (errorMessage != null) {
+            if (errorMessage.contains("username")) {
+                details = "Username already exists in the system";
+            } else if (errorMessage.contains("email")) {
+                details = "Email already exists in the system";
+            } else if (errorMessage.contains("phoneE164")) {
+                details = "Phone number already exists in the system";
+            } else if (errorMessage.contains("ownerOfClient")) {
+                details = "Owner of client already exists in the system";
+            } else {
+                details = errorMessage;
+            }
+        }
+
+        response.put("details", details);
+        return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+    }
 
     /**
      * Handles IllegalArgumentException (business logic/validation errors).

@@ -213,7 +213,10 @@ public class AdminService {
 
                     clientNameAndRooms.setRooms(roomNumbers);
                     String category = clientAndRoomOnBoardId.getClientCategory();
-                    clientNameAndRooms.setCategoryType(ClientNameAndRooms.categoryValues.valueOf(category));
+                    if(category == null || category.trim().isEmpty()) {
+                        clientNameAndRooms.setCategoryType(null);
+                    } else {
+                    clientNameAndRooms.setCategoryType(ClientNameAndRooms.categoryValues.valueOf(category));}
                     clientNameAndRoomsSet.add(clientNameAndRooms);
                 }
             }

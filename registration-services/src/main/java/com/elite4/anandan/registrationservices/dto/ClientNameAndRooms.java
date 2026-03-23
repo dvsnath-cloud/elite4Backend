@@ -1,5 +1,6 @@
 package com.elite4.anandan.registrationservices.dto;
 
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
@@ -16,6 +17,11 @@ public class ClientNameAndRooms {
 
     @NotNull(message = "CategoryType is required")
     private categoryValues categoryType;
+    /* ============================
+       Bank Details
+       ============================ */
+    @Valid
+    private BankDetails bankDetails;
 
     @NotEmpty(message = "At least one ROOM OR HOUSE details are required")
     @Size(max = 500, message = "No more than 500 client names are allowed")

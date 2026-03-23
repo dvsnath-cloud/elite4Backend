@@ -56,7 +56,7 @@ public class User {
     private String email;
 
     // Canonical phone number in E.164 (e.g., +919876543210)
-    @Indexed(unique = true)
+    @Indexed(unique = true, sparse = true)
     private String phoneE164;
 
     // Raw phone number entered by the user

@@ -10,17 +10,17 @@ import com.elite4.anandan.registrationservices.model.User;
 import com.elite4.anandan.registrationservices.repository.RegistrationRepository;
 import com.elite4.anandan.registrationservices.repository.RoomsOrHouseRepository;
 import com.elite4.anandan.registrationservices.repository.UserRepository;
+import com.google.i18n.phonenumbers.NumberParseException;
+import com.google.i18n.phonenumbers.PhoneNumberUtil;
+import com.google.i18n.phonenumbers.Phonenumber;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.retry.annotation.Backoff;
 import org.springframework.retry.annotation.Recover;
 import org.springframework.retry.annotation.Retryable;
-
-import java.time.LocalDate;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -205,7 +205,26 @@ public class RegistrationService {
     }
 
     public Optional<RegistrationWithRoomRequest> findByContactNo(String contactNo) {
-        return registrationRepository.findByContactNo(contactNo).map(this::toDto);
+        Optional<RegistrationDocument> reg = registrationRepository.findByContactNo(String.valueOf(contactNo));
+        if(reg.isPresent()) {
+            return reg.map(this::toDto);
+        }else{
+            PhoneNumberUtil phoneUtil = PhoneNumberUtil.getInstance();
+            Phonenumber.PhoneNumber number = null;
+            try {
+                number = phoneUtil.parse(contactNo, "IN");
+            } catch (NumberParseException e) {
+                throw new RuntimeException(e);
+            }
+            long nationalNumber = number.getNationalNumber();
+            Optional<RegistrationDocument> regWithNumber = registrationRepository.findByContactNo(String.valueOf(contactNo));
+            if(regWithNumber.isPresent()) {
+                return regWithNumber.map(this::toDto);
+            } else {
+                String newNumber= "0"+String.valueOf(nationalNumber);
+                return registrationRepository.findByContactNo(newNumber).map(this::toDto);
+            }
+        }
     }
 
     public List<RegistrationWithRoomRequest> findAll() {

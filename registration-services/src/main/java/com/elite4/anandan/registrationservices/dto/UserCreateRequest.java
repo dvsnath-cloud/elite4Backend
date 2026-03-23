@@ -41,4 +41,5 @@ public class UserCreateRequest {
     private Set<ClientNameAndRooms> clientDetails;
 
     private boolean active;
+
 }

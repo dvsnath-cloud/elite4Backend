@@ -23,15 +23,16 @@ public class AddClientToUser {
     @NotNull(message = "CategoryType is required")
     private categoryValues categoryType;
 
-    public enum categoryValues {
-        HOUSE, PG, FLAT, HOSTEL
-    }
-
     @NotBlank(message = "Client name is required")
     private String clientName;
 
     @NotEmpty(message = "At least one room is required")
     private Set<@Valid Room> rooms;
 
+    @Valid
+    private BankDetails bankDetails;
 
+    public enum categoryValues {
+        HOUSE, PG, FLAT, HOSTEL
+    }
 }
