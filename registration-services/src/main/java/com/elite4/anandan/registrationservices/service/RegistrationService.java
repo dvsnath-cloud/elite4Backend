@@ -39,6 +39,21 @@ public class RegistrationService {
             throw new IllegalArgumentException("Client username must be provided for registration");
         }
 
+        // Validate that contactNo is provided (required field)
+        if (dto.getContactNo() == null || dto.getContactNo().trim().isEmpty()) {
+            throw new IllegalArgumentException("Contact number must be provided for registration");
+        }
+
+        // Check if user with same contact number is already onboarded
+        Optional<RegistrationDocument> existingRegistrationByContact = registrationRepository.findByContactNo(dto.getContactNo());
+        if (existingRegistrationByContact.isPresent()) {
+            throw new IllegalArgumentException(
+                    "A user is already onboarded with contact number '" + dto.getContactNo() +
+                    "'. User name: '" + existingRegistrationByContact.get().getFname() +
+                    "', Client: '" + existingRegistrationByContact.get().getClientName() + "'"
+            );
+        }
+
         // Validate that fname, clientName, and contactNo combination doesn't already exist
         List<RegistrationDocument> existingRegistrations = registrationRepository
                 .findByFnameAndClientNameAndContactNo(dto.getFname(), dto.getClientName(), dto.getContactNo());
@@ -185,7 +200,9 @@ public class RegistrationService {
                     ;
                     if (existing.getOccupied() != null) doc.setOccupied(existing.getOccupied());
                     doc = registrationRepository.save(doc);
+                    if(changingRoom){
                     registrationRepository.deleteById(id);
+                    }
                     return toDto(doc);
                 });
     }
