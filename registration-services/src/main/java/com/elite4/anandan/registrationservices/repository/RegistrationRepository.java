@@ -28,6 +28,20 @@ public interface RegistrationRepository extends MongoRepository<RegistrationDocu
     List<RegistrationDocument> findBycheckOutDate(String checkOutDate);
     List<RegistrationDocument> findByOccupied(Registration.roomOccupied occupied);
     List<RegistrationDocument> findByFnameAndClientNameAndContactNo(String fname, String clientName, String contactNo);
-    List<RegistrationDocument> findByClientUserNameAndClientNameAndRoomRoomNumber(String fname, String clientName, String roomNumber);
+    List<RegistrationDocument> findByClientNameAndClientUserNameAndRoomRoomNumber( String clientName, String clientUserName,String roomNumber);
     List<RegistrationDocument> findByClientUserNameAndClientNameAndRoomHouseNumber(String fname, String clientName, String houseNumber);
+
+    // Query to get registrations excluding VACATED status
+    List<RegistrationDocument> findByClientNameAndClientUserNameAndRoomRoomNumberAndOccupied(
+            String clientName,
+            String clientUserName,
+            String roomNumber,
+            Registration.roomOccupied occupied);
+
+    // Query to get registrations excluding VACATED status by house number
+    List<RegistrationDocument> findByClientUserNameAndClientNameAndRoomHouseNumberAndOccupied(
+            String clientUserName,
+            String clientName,
+            String houseNumber,
+            Registration.roomOccupied occupied);
 }

@@ -1,9 +1,6 @@
 package com.elite4.anandan.registrationservices.controller;
 
-import com.elite4.anandan.registrationservices.dto.GetUserInfoByClient;
-import com.elite4.anandan.registrationservices.dto.Registration;
-import com.elite4.anandan.registrationservices.dto.RegistrationWithRoomRequest;
-import com.elite4.anandan.registrationservices.dto.UpdateUserForCheckOut;
+import com.elite4.anandan.registrationservices.dto.*;
 import com.elite4.anandan.registrationservices.service.RegistrationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -12,9 +9,12 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.lang.reflect.Type;
 import java.time.LocalDate;
 import java.util.Date;
 import java.util.List;
+import java.util.Set;
+
 import org.springframework.web.bind.annotation.CrossOrigin;
 @RestController
 @RequestMapping("/registrations")
@@ -44,9 +44,15 @@ public class RegistrationController {
     @PutMapping("/checkout")
     @PreAuthorize("hasAnyRole('ADMIN','MODERATOR')")
     public ResponseEntity<RegistrationWithRoomRequest> updateCheckOutDateById(@RequestBody UpdateUserForCheckOut updateUserForCheckOut) {
-        return registrationService.updateCheckOutDateByID(updateUserForCheckOut.getRegistrationId(), updateUserForCheckOut.getCheckOutDate(),updateUserForCheckOut.getOccupied())
+        return registrationService.updateCheckOutDateByID(updateUserForCheckOut.getRegistrationId(), updateUserForCheckOut.getCheckOutDate())
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
+    }
+
+    @PutMapping("/checkoutAllMembers")
+    @PreAuthorize("hasAnyRole('ADMIN','MODERATOR')")
+    public ResponseEntity<String> checkOutAllDateById(@RequestBody UserForCheckOutForAll userForCheckOutForAll) {
+         return registrationService.checkoutAll(userForCheckOutForAll);
     }
 
     @PostMapping("/usersForClient")

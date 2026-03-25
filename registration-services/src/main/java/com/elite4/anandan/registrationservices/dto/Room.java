@@ -14,7 +14,7 @@ public class Room {
     private roomOccupied occupied = roomOccupied.NOT_OCCUPIED;
 
     public enum roomOccupied {
-        OCCUPIED, NOT_OCCUPIED
+        OCCUPIED, NOT_OCCUPIED, PARTIALLY_OCCUPIED
     }
 
     @Override

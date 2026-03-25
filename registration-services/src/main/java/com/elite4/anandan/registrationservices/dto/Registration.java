@@ -27,7 +27,7 @@ public class Registration {
     private roomOccupied roomOccupied;
     private double roomRent;
     public enum roomOccupied {
-        OCCUPIED, NOT_OCCUPIED
+        OCCUPIED, NOT_OCCUPIED,VACATED
     }
 
     public enum Gender {

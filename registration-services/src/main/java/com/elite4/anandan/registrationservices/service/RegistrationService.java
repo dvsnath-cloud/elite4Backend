@@ -2,10 +2,7 @@ package com.elite4.anandan.registrationservices.service;
 
 import com.elite4.anandan.registrationservices.document.RegistrationDocument;
 import com.elite4.anandan.registrationservices.document.RoomOnBoardDocument;
-import com.elite4.anandan.registrationservices.dto.ClientAndRoomOnBoardId;
-import com.elite4.anandan.registrationservices.dto.Registration;
-import com.elite4.anandan.registrationservices.dto.RegistrationWithRoomRequest;
-import com.elite4.anandan.registrationservices.dto.Room;
+import com.elite4.anandan.registrationservices.dto.*;
 import com.elite4.anandan.registrationservices.model.User;
 import com.elite4.anandan.registrationservices.repository.RegistrationRepository;
 import com.elite4.anandan.registrationservices.repository.RoomsOrHouseRepository;
@@ -15,6 +12,7 @@ import com.google.i18n.phonenumbers.PhoneNumberUtil;
 import com.google.i18n.phonenumbers.Phonenumber;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -22,6 +20,7 @@ import org.springframework.retry.annotation.Backoff;
 import org.springframework.retry.annotation.Recover;
 import org.springframework.retry.annotation.Retryable;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
 @Service
@@ -249,14 +248,18 @@ public class RegistrationService {
     }
 
     public List<RegistrationWithRoomRequest> findAllByRoomNumber(String clientUserName, String clientName, String roomNumber) {
-        return registrationRepository.findByClientUserNameAndClientNameAndRoomRoomNumber(clientUserName, clientName, roomNumber).stream()
+        return registrationRepository.findByClientNameAndClientUserNameAndRoomRoomNumberAndOccupied(
+                clientName,
+                clientUserName,
+                roomNumber,
+                Registration.roomOccupied.OCCUPIED).stream()
                 .filter(doc -> doc.getCheckOutDate() == null || doc.getCheckOutDate().toString().isBlank())
                 .map(this::toDto)
                 .collect(Collectors.toList());
     }
 
     public List<RegistrationWithRoomRequest> findAllByHouseNumber(String clientUserName, String clientName, String roomNumber) {
-        return registrationRepository.findByClientUserNameAndClientNameAndRoomHouseNumber(clientUserName, clientName, roomNumber).stream()
+        return registrationRepository.findByClientUserNameAndClientNameAndRoomHouseNumberAndOccupied(clientUserName, clientName, roomNumber, Registration.roomOccupied.OCCUPIED).stream()
                 .filter(doc -> doc.getCheckOutDate() == null || doc.getCheckOutDate().toString().isBlank())
                 .map(this::toDto)
                 .collect(Collectors.toList());
@@ -302,20 +305,48 @@ public class RegistrationService {
         return registrationRepository.findBycheckOutDate(checkOutDate).stream().map(this::toDto).collect(Collectors.toList());
     }
 
-    /**
-     * Updates the checkout date for the first registration matching the given first name and room number.
-     *
-     * @param checkOutDate new checkout date to set
-     * @return the updated registration if found, empty otherwise
-     */
-    public Optional<RegistrationWithRoomRequest> updateCheckOutDateByID(String id, Date checkOutDate, Registration.roomOccupied occupied) {
+    public ResponseEntity checkoutAll(UserForCheckOutForAll userForCheckOutForAll){
+        AtomicReference<String> clientName = new AtomicReference<>();
+         AtomicReference<String> clientUserName = new AtomicReference<>();
+         AtomicReference<Room> room = new AtomicReference<>(new Room());
+         List<String> vacatedRegistrationIds = new ArrayList<>();
+        for(UpdateUserForCheckOut updateUserForCheckOut : userForCheckOutForAll.getUpdateUserForCheckOutSet()) {
+            registrationRepository.findById(updateUserForCheckOut.getRegistrationId())
+                    .map(doc -> {
+                        doc.setCheckOutDate(updateUserForCheckOut.getCheckOutDate());
+                        doc.setOccupied(Registration.roomOccupied.VACATED);
+                        clientName.set(doc.getClientName());
+                        clientUserName.set(doc.getClientUserName());
+                        room.set(doc.getRoom());
+                        // If the room is being vacated, also update the room's occupied status
+                        RegistrationDocument saved = registrationRepository.save(doc);
+                        vacatedRegistrationIds.add(saved.getId());
+                        return toDto(saved);
+                    }).orElse(null);
+        }
+        Optional<User> clientUser = userRepository.findByclientDetailsClientName(clientName.get());
+        if (clientUser.isPresent()) {
+            User user = clientUser.get();
+            List<RegistrationDocument> registrationDocuments = registrationRepository.findByClientNameAndClientUserNameAndRoomRoomNumberAndOccupied(clientUserName.get(),clientName.get(), room.get().getRoomNumber(),Registration.roomOccupied.OCCUPIED);
+            if(registrationDocuments.stream().count()>=1){
+                room.get().setOccupied(Room.roomOccupied.PARTIALLY_OCCUPIED);
+            }else{
+                room.get().setOccupied(Room.roomOccupied.NOT_OCCUPIED);
+            }
+        }
+        return ResponseEntity.ok("Registrations with IDs " + vacatedRegistrationIds + " have been checked out and rooms updated accordingly.");
+    }
+
+    public Optional<RegistrationWithRoomRequest> checkout(UpdateUserForCheckOut updateUserForCheckOut){
+        String id = updateUserForCheckOut.getRegistrationId();
+        Date checkOutDate = updateUserForCheckOut.getCheckOutDate();
         return registrationRepository.findById(id)
                 .map(doc -> {
                     doc.setCheckOutDate(checkOutDate);
-                    doc.setOccupied(occupied);
-                    if (occupied == Registration.roomOccupied.NOT_OCCUPIED) {
-                        // If the room is being vacated, also update the room's occupied status
-                        Optional<User> clientUser = userRepository.findByclientDetailsClientName(doc.getClientName());
+                    doc.setOccupied(Registration.roomOccupied.VACATED);
+                    RegistrationDocument saved = registrationRepository.save(doc);
+                    // If the room is being vacated, also update the room's occupied status
+                    Optional<User> clientUser = userRepository.findByclientDetailsClientName(doc.getClientName());
                         if (clientUser.isPresent()) {
                             User user = clientUser.get();
                             Set<ClientAndRoomOnBoardId> clientAndRoomOnBoardIds = user.getClientDetails();
@@ -327,7 +358,12 @@ public class RegistrationService {
                                         for (Room room : rooms) {
                                             if ((room.getRoomNumber() != null && room.getRoomNumber().equals(doc.getRoom().getRoomNumber())) ||
                                                     (room.getHouseNumber() != null && room.getHouseNumber().equals(doc.getRoom().getHouseNumber()))) {
-                                                room.setOccupied(Room.roomOccupied.NOT_OCCUPIED);
+                                                List<RegistrationDocument> registrationDocuments = registrationRepository.findByClientNameAndClientUserNameAndRoomRoomNumberAndOccupied(doc.getClientUserName(),doc.getClientUserName(),room.getRoomNumber(),Registration.roomOccupied.OCCUPIED);
+                                                if(registrationDocuments.stream().count()>=1){
+                                                    room.setOccupied(Room.roomOccupied.PARTIALLY_OCCUPIED);
+                                                }else{
+                                                    room.setOccupied(Room.roomOccupied.NOT_OCCUPIED);
+                                                }
                                             }
                                         }
                                         roomOnBoardDocument.get().setRooms(rooms);
@@ -336,10 +372,18 @@ public class RegistrationService {
                                 }
                             }
                         }
-                    }
-                    RegistrationDocument saved = registrationRepository.save(doc);
                     return toDto(saved);
                 });
+    }
+
+    /**
+     * Updates the checkout date for the first registration matching the given first name and room number.
+     *
+     * @param checkOutDate new checkout date to set
+     * @return the updated registration if found, empty otherwise
+     */
+    public Optional<RegistrationWithRoomRequest> updateCheckOutDateByID(String id, Date checkOutDate) {
+        return checkout (new UpdateUserForCheckOut(id, checkOutDate));
     }
 
     /**
@@ -348,6 +392,15 @@ public class RegistrationService {
     public List<RegistrationWithRoomRequest> findRoomsWithNotOccupiedStatus() {
         return registrationRepository.findByOccupied(Registration.roomOccupied.NOT_OCCUPIED)
                 .stream()
+                .map(doc -> toDto(doc))
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Returns all registrations (with room info) where occupied status is VACATED.
+     */
+    public List<RegistrationWithRoomRequest> findRoomsWithPartiallyOccupiedStatus() {
+        return registrationRepository.findByOccupied(Registration.roomOccupied.VACATED).stream()
                 .map(doc -> toDto(doc))
                 .collect(Collectors.toList());
     }
