@@ -108,6 +108,13 @@ public class RegistrationController {
         return registrationService.findAllByHouseNumber(clientUserName, clientName,houseNumber);
     }
 
+
+    @GetMapping("/user/getVacatedRoomsAndMembers")
+    @PreAuthorize("hasAnyRole('ADMIN','MODERATOR')")
+    public List<RegistrationWithRoomRequest> findRoomsWithVacated() {
+        return registrationService.findRoomsWithVacatedaStatus();
+    }
+
     /*@GetMapping("/user/room/{roomType}")
     @PreAuthorize("hasAnyRole('ADMIN','MODERATOR')")
     public List<RegistrationWithRoomRequest> findAllByRoomType(@RequestParam String clientUserName,

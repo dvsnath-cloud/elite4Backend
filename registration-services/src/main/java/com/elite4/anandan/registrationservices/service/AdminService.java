@@ -179,48 +179,48 @@ public class AdminService {
     }
 
     public UserResponse toUserResponse(User user) {
-            UserResponse response = new UserResponse();
-            response.setId(user.getId());
-            response.setUsername(user.getUsername());
-            response.setEmail(user.getEmail());
-            response.setRoleIds(user.getRoleIds());
-            response.setActive(user.isActive());
-            response.setCreatedAt(user.getCreatedAt());
-            response.setUpdatedAt(user.getUpdatedAt());
-            response.setLastLoginAt(user.getLastLoginAt());
-            response.setPhoneNumber(user.getPhoneRaw());
-            Set<ClientNameAndRooms> clientNameAndRoomsSet = new HashSet<>();
-            Set<ClientAndRoomOnBoardId> clientAndRoomOnBoardIds = user.getClientDetails();
-            if (clientAndRoomOnBoardIds != null) {
-                for(ClientAndRoomOnBoardId clientAndRoomOnBoardId : clientAndRoomOnBoardIds) {
-                    ClientNameAndRooms clientNameAndRooms = new ClientNameAndRooms();
-                    clientNameAndRooms.setClientName(clientAndRoomOnBoardId.getClientName());
-                    Set<Room> roomNumbers = new HashSet<>();
-                    // Only fetch rooms for this specific client, not all
-                    String roomOnBoardId = clientAndRoomOnBoardId.getRoomOnBoardId();
-                    if (roomOnBoardId != null && !roomOnBoardId.trim().isEmpty()) {
-                        Optional<RoomOnBoardDocument> roomOnBoardDocument = roomsOrHouseRepository.findById(roomOnBoardId);
-                        if (roomOnBoardDocument.isPresent()) {
-                            Set<Room> retrievedRooms = roomOnBoardDocument.get().getRooms();
-                            // Handle null rooms safely
-                            if (retrievedRooms != null && !retrievedRooms.isEmpty()) {
-                                // Filter out rooms with null enum values or keep them as-is
-                                // The custom deserializers will handle null values gracefully
-                                roomNumbers.addAll(retrievedRooms);
-                            }
+        UserResponse response = new UserResponse();
+        response.setId(user.getId());
+        response.setUsername(user.getUsername());
+        response.setEmail(user.getEmail());
+        response.setRoleIds(user.getRoleIds());
+        response.setActive(user.isActive());
+        response.setCreatedAt(user.getCreatedAt());
+        response.setUpdatedAt(user.getUpdatedAt());
+        response.setLastLoginAt(user.getLastLoginAt());
+        response.setPhoneNumber(user.getPhoneRaw());
+        Set<ClientNameAndRooms> clientNameAndRoomsSet = new HashSet<>();
+        Set<ClientAndRoomOnBoardId> clientAndRoomOnBoardIds = user.getClientDetails();
+        if (clientAndRoomOnBoardIds != null) {
+            for(ClientAndRoomOnBoardId clientAndRoomOnBoardId : clientAndRoomOnBoardIds) {
+                ClientNameAndRooms clientNameAndRooms = new ClientNameAndRooms();
+                clientNameAndRooms.setClientName(clientAndRoomOnBoardId.getClientName());
+                Set<Room> roomNumbers = new HashSet<>();
+                // Only fetch rooms for this specific client, not all
+                String roomOnBoardId = clientAndRoomOnBoardId.getRoomOnBoardId();
+                if (roomOnBoardId != null && !roomOnBoardId.trim().isEmpty()) {
+                    Optional<RoomOnBoardDocument> roomOnBoardDocument = roomsOrHouseRepository.findById(roomOnBoardId);
+                    if (roomOnBoardDocument.isPresent()) {
+                        Set<Room> retrievedRooms = roomOnBoardDocument.get().getRooms();
+                        // Handle null rooms safely
+                        if (retrievedRooms != null && !retrievedRooms.isEmpty()) {
+                            // Filter out rooms with null enum values or keep them as-is
+                            // The custom deserializers will handle null values gracefully
+                            roomNumbers.addAll(retrievedRooms);
                         }
                     }
-
-                    clientNameAndRooms.setRooms(roomNumbers);
-                    String category = clientAndRoomOnBoardId.getClientCategory();
-                    if(category == null || category.trim().isEmpty()) {
-                        clientNameAndRooms.setCategoryType(null);
-                    } else {
-                    clientNameAndRooms.setCategoryType(ClientNameAndRooms.categoryValues.valueOf(category));}
-                    clientNameAndRoomsSet.add(clientNameAndRooms);
                 }
+
+                clientNameAndRooms.setRooms(roomNumbers);
+                String category = clientAndRoomOnBoardId.getClientCategory();
+                if(category == null || category.trim().isEmpty()) {
+                    clientNameAndRooms.setCategoryType(null);
+                } else {
+                    clientNameAndRooms.setCategoryType(ClientNameAndRooms.categoryValues.valueOf(category));}
+                clientNameAndRoomsSet.add(clientNameAndRooms);
             }
-            response.setClientNameAndRooms(clientNameAndRoomsSet);
-            return response;
+        }
+        response.setClientNameAndRooms(clientNameAndRoomsSet);
+        return response;
     }
 }

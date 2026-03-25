@@ -48,7 +48,8 @@ public class UserCreationService {
      * @param request user creation payload
      * @return 201 with created user data, or 400 if username/email/roles are invalid
      */
-    public ResponseEntity<?> createUser(UserCreateRequest request) {
+    @SuppressWarnings("rawtypes")
+    public ResponseEntity createUser(UserCreateRequest request) {
         Set<ClientAndRoomOnBoardId> clientAndRoomOnBoardIdsSet = new HashSet<>();
 
         // Check if username/email/phone combination already exists with overlapping or exact client names
@@ -225,7 +226,8 @@ public class UserCreationService {
         }
     }
 
-    public ResponseEntity<?> addClientToExistUser(AddClientToUser request) {
+    @SuppressWarnings("rawtypes")
+    public ResponseEntity addClientToExistUser(AddClientToUser request) {
         Set<ClientAndRoomOnBoardId> clientAndRoomOnBoardIdsSet = new HashSet<>();
         Optional<User> existingUserByUsername = userRepository.findByUsername(request.getUsername());
         if (existingUserByUsername.isPresent()) {
@@ -336,7 +338,8 @@ public class UserCreationService {
     }
 
 
-    public ResponseEntity<?> updateRoomType(UpdateRoomType request) {
+    @SuppressWarnings("rawtypes")
+    public ResponseEntity updateRoomType(UpdateRoomType request) {
         // Find the user by username
         return userRepository.findByUsername(request.getUsername())
                 .map(user -> {
