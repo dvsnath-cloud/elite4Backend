@@ -13,9 +13,9 @@ import java.util.Optional;
 public interface RegistrationRepository extends MongoRepository<RegistrationDocument, String> {
     Optional<RegistrationDocument> findByEmail(String email);
     Optional<RegistrationDocument> findByContactNo(String contactNo);
-    List<RegistrationDocument> findByClientNameAndClientUserName(String clientName, String clientUserName);
-    List<RegistrationDocument> findAllByClientUserNameAndClientNameAndRoomRoomType(String clientUserName,String clientName,String roomType);
-    List<RegistrationDocument> findAllByClientUserNameAndClientNameAndRoomHouseType(String clientUserName,String clientName,String houseType);
+    List<RegistrationDocument> findByColiveNameAndColiveUserName(String coliveName, String coliveUserName);
+    List<RegistrationDocument> findAllByColiveUserNameAndColiveNameAndRoomForRegistrationRoomType(String coliveUserName,String coliveName,String roomType);
+    List<RegistrationDocument> findAllByColivetUserNameAndColiveNameAndRoomForRegistrationHouseType(String coliveUserName,String coliveName,String houseType);
     List<RegistrationDocument> findAllByGender(Registration.Gender gender);
     List<RegistrationDocument> findByfname(String fname);
     List<RegistrationDocument> findBylname(String lname);
@@ -27,21 +27,21 @@ public interface RegistrationRepository extends MongoRepository<RegistrationDocu
     List<RegistrationDocument> findBycheckInDate(String checkInDate);   
     List<RegistrationDocument> findBycheckOutDate(String checkOutDate);
     List<RegistrationDocument> findByOccupied(Registration.roomOccupied occupied);
-    List<RegistrationDocument> findByFnameAndClientNameAndContactNo(String fname, String clientName, String contactNo);
-    List<RegistrationDocument> findByClientNameAndClientUserNameAndRoomRoomNumber( String clientName, String clientUserName,String roomNumber);
-    List<RegistrationDocument> findByClientUserNameAndClientNameAndRoomHouseNumber(String fname, String clientName, String houseNumber);
+    List<RegistrationDocument> findByFnameAndColiveNameAndContactNo(String fname, String coliveName, String contactNo);
+    List<RegistrationDocument> findByColiveNameAndColiveUserNameAndRoomForRegistrationRoomNumber( String coliveName, String coliveUserName,String roomNumber);
+    List<RegistrationDocument> findByColiveUserNameAndColiveNameAndRoomForRegistrationHouseNumber(String fname, String coliveName, String houseNumber);
 
     // Query to get registrations excluding VACATED status
-    List<RegistrationDocument> findByClientNameAndClientUserNameAndRoomRoomNumberAndOccupied(
-            String clientName,
-            String clientUserName,
+    List<RegistrationDocument> findByColiveNameAndColiveUserNameAndRoomForRegistrationRoomNumberAndOccupied(
+            String coliveName,
+            String coliveUserName,
             String roomNumber,
             Registration.roomOccupied occupied);
 
     // Query to get registrations excluding VACATED status by house number
-    List<RegistrationDocument> findByClientUserNameAndClientNameAndRoomHouseNumberAndOccupied(
-            String clientUserName,
-            String clientName,
+    List<RegistrationDocument> findByColiveUserNameAndColiveNameAndRoomForRegistrationHouseNumberAndOccupied(
+            String coliveUserName,
+            String coliveName,
             String houseNumber,
             Registration.roomOccupied occupied);
 }

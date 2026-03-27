@@ -6,7 +6,7 @@ import java.util.Date;
 
 @Data
 public class GetUserInfoByClient {
-    private String clientUserName;
-    private String clientName;
+    private String coliveUserName;
+    private String coliveName;
 }
 

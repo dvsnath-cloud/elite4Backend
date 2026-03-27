@@ -20,7 +20,6 @@ import org.springframework.retry.annotation.Backoff;
 import org.springframework.retry.annotation.Recover;
 import org.springframework.retry.annotation.Retryable;
 import java.util.*;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
 @Service
@@ -31,10 +30,11 @@ public class RegistrationService {
     private final NotificationClient notificationClient;
     private final UserRepository userRepository;
     private final RoomsOrHouseRepository roomsOrHouseRepository;
+    private final FileStorageService fileStorageService;
 
-    public RegistrationWithRoomRequest create(Registration dto, Room room) {
+    public RegistrationWithRoomRequest create(Registration dto, RoomForRegistration room) {
         // Validate that clientUserName is provided (required field)
-        if (dto.getClientUserName() == null || dto.getClientUserName().trim().isEmpty()) {
+        if (dto.getColiveUserName() == null || dto.getColiveUserName().trim().isEmpty()) {
             throw new IllegalArgumentException("Client username must be provided for registration");
         }
 
@@ -48,18 +48,18 @@ public class RegistrationService {
         if (existingRegistrationByContact.isPresent()) {
             throw new IllegalArgumentException(
                     "A user is already onboarded with contact number '" + dto.getContactNo() +
-                    "'. User name: '" + existingRegistrationByContact.get().getFname() +
-                    "', Client: '" + existingRegistrationByContact.get().getClientName() + "'"
+                            "'. User name: '" + existingRegistrationByContact.get().getFname() +
+                            "', Client: '" + existingRegistrationByContact.get().getColiveName() + "'"
             );
         }
 
         // Validate that fname, clientName, and contactNo combination doesn't already exist
         List<RegistrationDocument> existingRegistrations = registrationRepository
-                .findByFnameAndClientNameAndContactNo(dto.getFname(), dto.getClientName(), dto.getContactNo());
+                .findByFnameAndColiveNameAndContactNo(dto.getFname(), dto.getColiveName(), dto.getContactNo());
         if (!existingRegistrations.isEmpty()) {
             throw new IllegalArgumentException(
                     "Registration already exists with fname '" + dto.getFname() +
-                            "', clientName '" + dto.getClientName() +
+                            "', clientName '" + dto.getColiveName() +
                             "', and contactNo '" + dto.getContactNo() + "'"
             );
         }
@@ -85,10 +85,10 @@ public class RegistrationService {
             }
 
             // Validate that clientUsername exists in UserRepository
-            Optional<User> clientUser = userRepository.findByUsername(dto.getClientUserName());
+            Optional<User> clientUser = userRepository.findByUsername(dto.getColiveUserName());
             if (clientUser.isEmpty()) {
                 throw new IllegalArgumentException(
-                        "Client username '" + dto.getClientUserName() + "' does not exist in the system. Please create a user with this client name first."
+                        "Client username '" + dto.getColiveUserName() + "' does not exist in the system. Please create a user with this client name first."
                 );
             }
 
@@ -98,14 +98,14 @@ public class RegistrationService {
 
             if (clientAndRoomOnBoardIds == null || clientAndRoomOnBoardIds.isEmpty()) {
                 throw new IllegalArgumentException(
-                        "Client username '" + dto.getClientUserName() + "' does not have any rooms assigned"
+                        "Client username '" + dto.getColiveUserName() + "' does not have any rooms assigned"
                 );
             }
 
             boolean roomFound = false;
             StringBuilder availableRooms = new StringBuilder();
             for (ClientAndRoomOnBoardId clientDetail : clientAndRoomOnBoardIds) {
-                if (clientDetail.getClientName().equals(dto.getClientName())) {
+                if (clientDetail.getClientName().equals(dto.getColiveName())) {
                     if (clientDetail.getRoomOnBoardId() == null) {
                         continue;
                     }
@@ -133,10 +133,9 @@ public class RegistrationService {
                                     availableRoom.getRoomNumber().equals(room.getRoomNumber().trim().toString())) {
                                 availableRooms.append(availableRoom.getRoomNumber()).append(" ");
                                 log.info("Provided room number '{}' exists with client '{}' - proceeding with registration",
-                                        room.getRoomNumber(), dto.getClientUserName());
+                                        room.getRoomNumber(), dto.getColiveUserName());
                                 roomFound = true;
                                 id = "R" + "-" + UUID.randomUUID().toString().replace("-", "").substring(0, 14);
-                                room.setOccupied(Room.roomOccupied.OCCUPIED);
                                 availableRoom.setOccupied(Room.roomOccupied.OCCUPIED);
                                 rooms.add(availableRoom);
                                 break;
@@ -148,10 +147,9 @@ public class RegistrationService {
                                     availableRoom.getHouseNumber().equals(room.getHouseNumber())) {
                                 availableRooms.append(availableRoom.getHouseNumber()).append(" ");
                                 log.info("Provided house number '{}' exists with client '{}' - proceeding with registration",
-                                        room.getHouseNumber(), dto.getClientUserName());
+                                        room.getHouseNumber(), dto.getColiveUserName());
                                 roomFound = true;
                                 id = "H" + "-" + UUID.randomUUID().toString().replace("-", "").substring(0, 14);
-                                room.setOccupied(Room.roomOccupied.OCCUPIED);
                                 availableRoom.setOccupied(Room.roomOccupied.OCCUPIED);
                                 rooms.add(availableRoom);
                                 break;
@@ -170,7 +168,7 @@ public class RegistrationService {
             if (!roomFound) {
                 String roomIdentifier = room.getRoomNumber() != null ? room.getRoomNumber() : room.getHouseNumber();
                 throw new IllegalArgumentException(
-                        "Room/House number '" + roomIdentifier + "' is not associated with client '" + dto.getClientUserName() +
+                        "Room/House number '" + roomIdentifier + "' is not associated with client '" + dto.getColiveUserName() +
                                 "'. Available rooms: " + (availableRooms.length() > 0 ? availableRooms.toString().trim() : "None")
                 );
             }
@@ -186,26 +184,147 @@ public class RegistrationService {
         return toDto(doc);
     }
 
-    public Optional<RegistrationWithRoomRequest> update(String id, Registration dto, Room room, Boolean changingRoom) {
+    /**
+     * Creates a registration with file uploads (aadhar photo and document upload)
+     * COMPLETE IMPLEMENTATION with file saving:
+     * - generateFileName() to create unique filenames
+     * - uploadFile() to upload to LOCAL/S3/AZURE storage
+     * - Save file paths to MongoDB database
+     *
+     * @param dto                 Registration DTO
+     * @param room                Room DTO
+     * @param aadharPhotoBytes    Aadhar photo as byte array (optional)
+     * @param documentUploadBytes Document upload as byte array (optional)
+     * @return RegistrationWithRoomRequest with file paths saved to DB
+     */
+    public RegistrationWithRoomRequest createWithFiles(Registration dto, RoomForRegistration room, byte[] aadharPhotoBytes, byte[] documentUploadBytes) {
+        // Step 1: Create registration (get the ID)
+        RegistrationWithRoomRequest result = create(dto, room);
+        String registrationId = result.getId();
+
+        log.info("Starting file upload for new registration: {}", registrationId);
+
+        // Step 2: Upload aadhar photo if provided
+        if (aadharPhotoBytes != null && aadharPhotoBytes.length > 0) {
+            try {
+                // generateFileName() - Create unique filename with timestamp
+                String fileName = fileStorageService.generateFileName(registrationId, "aadhar.jpg", "aadhar");
+                log.info("Generated aadhar filename: {}", fileName);
+
+                // uploadFile() - Save to storage (LOCAL/S3/AZURE)
+                String aadharPath = fileStorageService.uploadFile(fileName, aadharPhotoBytes, "image/jpeg");
+                log.info("Aadhar uploaded to: {}", aadharPath);
+
+                // Store path in DTO
+                dto.setAadharPhotoPath(aadharPath);
+            } catch (Exception e) {
+                log.error("Aadhar upload failed for {}: {}", registrationId, e.getMessage(), e);
+            }
+        }
+
+        // Step 3: Upload document if provided
+        if (documentUploadBytes != null && documentUploadBytes.length > 0) {
+            try {
+                // generateFileName() - Create unique filename with timestamp
+                String fileName = fileStorageService.generateFileName(registrationId, "document.pdf", "document");
+                log.info("Generated document filename: {}", fileName);
+
+                // uploadFile() - Save to storage (LOCAL/S3/AZURE)
+                String documentPath = fileStorageService.uploadFile(fileName, documentUploadBytes, "application/pdf");
+                log.info("Document uploaded to: {}", documentPath);
+
+                // Store path in DTO
+                dto.setDocumentUploadPath(documentPath);
+            } catch (Exception e) {
+                log.error("Document upload failed for {}: {}", registrationId, e.getMessage(), e);
+            }
+        }
+
+        // Step 4: PERSIST file paths to MongoDB
+        if ((dto.getAadharPhotoPath() != null && !dto.getAadharPhotoPath().isBlank()) ||
+                (dto.getDocumentUploadPath() != null && !dto.getDocumentUploadPath().isBlank())) {
+            try {
+                Optional<RegistrationDocument> existingDoc = registrationRepository.findById(registrationId);
+                if (existingDoc.isPresent()) {
+                    RegistrationDocument doc = existingDoc.get();
+
+                    // Set aadhar photo path
+                    if (dto.getAadharPhotoPath() != null && !dto.getAadharPhotoPath().isBlank()) {
+                        doc.setAadharPhotoPath(dto.getAadharPhotoPath());
+                        log.info("Aadhar path saved to MongoDB: {}", registrationId);
+                    }
+
+                    // Set document path
+                    if (dto.getDocumentUploadPath() != null && !dto.getDocumentUploadPath().isBlank()) {
+                        doc.setDocumentUploadPath(dto.getDocumentUploadPath());
+                        log.info("Document path saved to MongoDB: {}", registrationId);
+                    }
+
+                    // SAVE to MongoDB
+                    registrationRepository.save(doc);
+                    log.info("File paths persisted for registration: {}", registrationId);
+
+                    // Update response with persisted data
+                    result.setRegistration(toRegistration(doc));
+                }
+            } catch (Exception e) {
+                log.error("Failed to persist file paths to DB for {}: {}", registrationId, e.getMessage(), e);
+            }
+        }
+
+        log.info("File creation completed. Registration: {}, Aadhar saved: {}, Document saved: {}",
+                registrationId,
+                dto.getAadharPhotoPath() != null,
+                dto.getDocumentUploadPath() != null);
+
+        return result;
+    }
+
+    public Optional<RegistrationWithRoomRequest> update(String id, Registration dto, RoomForRegistration room, Boolean changingRoom) {
         return registrationRepository.findById(id)
                 .map(existing -> {
                     RegistrationDocument doc = toDocument(dto, room);
                     doc.setId(id);
-                    if (existing.getRoom() != null && !changingRoom) doc.setRoom(existing.getRoom());
-                    else {
+                    // Determine room assignment and whether to update ID
+                    boolean isInitialRegistration = isInitialRegistrationId(id);
+                    boolean shouldKeepExistingRoom = isInitialRegistration && existing.getRoom() != null && !changingRoom;
+                    if (shouldKeepExistingRoom) {
+                        doc.setRoom(existing.getRoom());
+                    } else {
                         doc.setRoom(room);
-                        doc.setId("U" + "-" + UUID.randomUUID().toString().replace("-", "").substring(0, 14));
+                        // Generate new ID for update if not an initial registration or room is changing
+                        doc.setId(generateUpdateId());
                     }
                     doc = registrationRepository.save(doc);
-                    if(changingRoom){
-                    registrationRepository.deleteById(id);
+                    // Delete old record if changing room
+                    if (changingRoom) {
+                        registrationRepository.deleteById(id);
                     }
                     return toDto(doc);
                 });
     }
 
-    public List<RegistrationWithRoomRequest> findByClientUserNameAndClientName(String clientUserName, String clientName) {
-        return registrationRepository.findByClientNameAndClientUserName(clientName, clientUserName).stream()
+    /**
+     * Checks if the ID represents an initial registration (H- or R- prefix).
+     *
+     * @param id the registration ID to check
+     * @return true if ID starts with H- or R-, false otherwise
+     */
+    private boolean isInitialRegistrationId(String id) {
+        return id != null && (id.startsWith("H-") || id.startsWith("R-"));
+    }
+
+    /**
+     * Generates a new update registration ID with U- prefix.
+     *
+     * @return new unique update ID
+     */
+    private String generateUpdateId() {
+        return "U-" + UUID.randomUUID().toString().replace("-", "").substring(0, 14);
+    }
+
+    public List<RegistrationWithRoomRequest> findByColiveNameAndColiveUserName(String coliveUserName, String coliveName) {
+        return registrationRepository.findByColiveNameAndColiveUserName(coliveName, coliveUserName).stream()
                 .map(this::toDto)
                 .collect(Collectors.toList());
     }
@@ -220,9 +339,9 @@ public class RegistrationService {
 
     public Optional<RegistrationWithRoomRequest> findByContactNo(String contactNo) {
         Optional<RegistrationDocument> reg = registrationRepository.findByContactNo(String.valueOf(contactNo));
-        if(reg.isPresent()) {
+        if (reg.isPresent()) {
             return reg.map(this::toDto);
-        }else{
+        } else {
             PhoneNumberUtil phoneUtil = PhoneNumberUtil.getInstance();
             Phonenumber.PhoneNumber number = null;
             try {
@@ -232,10 +351,10 @@ public class RegistrationService {
             }
             long nationalNumber = number.getNationalNumber();
             Optional<RegistrationDocument> regWithNumber = registrationRepository.findByContactNo(String.valueOf(contactNo));
-            if(regWithNumber.isPresent()) {
+            if (regWithNumber.isPresent()) {
                 return regWithNumber.map(this::toDto);
             } else {
-                String newNumber= "0"+String.valueOf(nationalNumber);
+                String newNumber = "0" + String.valueOf(nationalNumber);
                 return registrationRepository.findByContactNo(newNumber).map(this::toDto);
             }
         }
@@ -246,29 +365,29 @@ public class RegistrationService {
     }
 
     public List<RegistrationWithRoomRequest> findAllByRoomNumber(String clientUserName, String clientName, String roomNumber) {
-        return registrationRepository.findByClientNameAndClientUserNameAndRoomRoomNumberAndOccupied(
-                clientName,
-                clientUserName,
-                roomNumber,
-                Registration.roomOccupied.OCCUPIED).stream()
+        return registrationRepository.findByColiveNameAndColiveUserNameAndRoomForRegistrationRoomNumberAndOccupied(
+                        clientName,
+                        clientUserName,
+                        roomNumber,
+                        Registration.roomOccupied.OCCUPIED).stream()
                 .filter(doc -> doc.getCheckOutDate() == null || doc.getCheckOutDate().toString().isBlank())
                 .map(this::toDto)
                 .collect(Collectors.toList());
     }
 
     public List<RegistrationWithRoomRequest> findAllByHouseNumber(String clientUserName, String clientName, String roomNumber) {
-        return registrationRepository.findByClientUserNameAndClientNameAndRoomHouseNumberAndOccupied(clientUserName, clientName, roomNumber, Registration.roomOccupied.OCCUPIED).stream()
+        return registrationRepository.findByColiveUserNameAndColiveNameAndRoomForRegistrationHouseNumberAndOccupied(clientUserName, clientName, roomNumber, Registration.roomOccupied.OCCUPIED).stream()
                 .filter(doc -> doc.getCheckOutDate() == null || doc.getCheckOutDate().toString().isBlank())
                 .map(this::toDto)
                 .collect(Collectors.toList());
     }
 
     public List<RegistrationWithRoomRequest> findAllByRoomType(String clientUserName, String clientName, String roomType) {
-        return registrationRepository.findAllByClientUserNameAndClientNameAndRoomRoomType(clientUserName, clientName, roomType).stream().map(this::toDto).collect(Collectors.toList());
+        return registrationRepository.findAllByColiveUserNameAndColiveNameAndRoomForRegistrationRoomType(clientUserName, clientName, roomType).stream().map(this::toDto).collect(Collectors.toList());
     }
 
     public List<RegistrationWithRoomRequest> findAllByHouseType(String clientUserName, String clientName, String houseType) {
-        return registrationRepository.findAllByClientUserNameAndClientNameAndRoomHouseType(clientUserName, clientName, houseType).stream().map(this::toDto).collect(Collectors.toList());
+        return registrationRepository.findAllByColivetUserNameAndColiveNameAndRoomForRegistrationHouseType(clientUserName, clientName, houseType).stream().map(this::toDto).collect(Collectors.toList());
     }
 
     public List<RegistrationWithRoomRequest> findAllByGender(Registration.Gender gender) {
@@ -303,10 +422,10 @@ public class RegistrationService {
         return registrationRepository.findBycheckOutDate(checkOutDate).stream().map(this::toDto).collect(Collectors.toList());
     }
 
-    public ResponseEntity<String> checkoutAll(UserForCheckOutForAll userForCheckOutForAll){
+    public ResponseEntity<String> checkoutAll(Set<UpdateUserForCheckOut> userForCheckOutForAll) {
         List<String> vacatedRegistrationIds = new ArrayList<>();
         List<RegistrationWithRoomRequest> result = new ArrayList<>();
-        for(UpdateUserForCheckOut updateUserForCheckOut : userForCheckOutForAll.getUpdateUserForCheckOutSet()){
+        for (UpdateUserForCheckOut updateUserForCheckOut : userForCheckOutForAll.stream().toList()) {
             Optional<RegistrationWithRoomRequest> updated = updateCheckOutDateByID(updateUserForCheckOut.getRegistrationId(), updateUserForCheckOut.getCheckOutDate());
             updated.ifPresent(result::add);
             vacatedRegistrationIds.add(updateUserForCheckOut.getRegistrationId());
@@ -314,48 +433,142 @@ public class RegistrationService {
         return ResponseEntity.ok("Registrations with IDs " + vacatedRegistrationIds + " have been checked out and rooms updated accordingly.");
     }
 
-    public Optional<RegistrationWithRoomRequest> checkout(UpdateUserForCheckOut updateUserForCheckOut){
+    public Optional<RegistrationWithRoomRequest> checkout(UpdateUserForCheckOut updateUserForCheckOut) {
+        if (updateUserForCheckOut == null || updateUserForCheckOut.getRegistrationId() == null) {
+            return Optional.empty();
+        }
+
         String id = updateUserForCheckOut.getRegistrationId();
         Date checkOutDate = updateUserForCheckOut.getCheckOutDate();
+
         return registrationRepository.findById(id)
                 .map(doc -> {
+                    // Mark registration as vacated
                     doc.setCheckOutDate(checkOutDate);
                     doc.setOccupied(Registration.roomOccupied.VACATED);
+                    doc.setActive(Boolean.FALSE);
                     RegistrationDocument saved = registrationRepository.save(doc);
-                    // If the room is being vacated, also update the room's occupied status
-                    List<User> clientUsers = userRepository.findAllByclientDetailsClientName(doc.getClientName());
-                        if (!clientUsers.isEmpty()) {
-                            User user = clientUsers.get(0);
-                            Set<ClientAndRoomOnBoardId> clientAndRoomOnBoardIds = user.getClientDetails();
-                            for (ClientAndRoomOnBoardId clientDetail : clientAndRoomOnBoardIds) {
-                                if (clientDetail.getClientName().equals(doc.getClientName())) {
-                                    Optional<RoomOnBoardDocument> roomOnBoardDocument = roomsOrHouseRepository.findById(clientDetail.getRoomOnBoardId());
-                                    if (roomOnBoardDocument.isPresent()) {
-                                        Set<Room> rooms = roomOnBoardDocument.get().getRooms();
-                                        for (Room room : rooms) {
-                                            if ((room.getRoomNumber() != null && room.getRoomNumber().equals(doc.getRoom().getRoomNumber())) ||
-                                                    (room.getHouseNumber() != null && room.getHouseNumber().equals(doc.getRoom().getHouseNumber()))) {
-                                                List<RegistrationDocument> registrationDocuments= new ArrayList<>();
-                                                if(clientDetail.getClientCategory().equals("PG")||clientDetail.getClientCategory().equals("HOSTEL")){
-                                                    registrationDocuments = registrationRepository.findByClientNameAndClientUserNameAndRoomRoomNumberAndOccupied(doc.getClientUserName(), doc.getClientUserName(), room.getRoomNumber(), Registration.roomOccupied.OCCUPIED);
-                                                }else {
-                                                        registrationDocuments = registrationRepository.findByClientUserNameAndClientNameAndRoomHouseNumberAndOccupied(doc.getClientUserName(), doc.getClientUserName(), room.getHouseNumber(), Registration.roomOccupied.OCCUPIED);
-                                                }
-                                                if(registrationDocuments.size()>=1){
-                                                    room.setOccupied(Room.roomOccupied.PARTIALLY_OCCUPIED);
-                                                }else{
-                                                    room.setOccupied(Room.roomOccupied.NOT_OCCUPIED);
-                                                }
-                                            }
-                                        }
-                                        roomOnBoardDocument.get().setRooms(rooms);
-                                        roomsOrHouseRepository.save(roomOnBoardDocument.get());
-                                    }
-                                }
-                            }
-                        }
+
+                    // Update room occupancy status
+                    updateRoomOccupancyAfterCheckout(doc);
+
                     return toDto(saved);
                 });
+    }
+
+    /**
+     * Updates the room occupancy status after a guest checks out.
+     *
+     * @param registrationDoc the registration document that was checked out
+     */
+    private void updateRoomOccupancyAfterCheckout(RegistrationDocument registrationDoc) {
+        List<User> clientUsers = userRepository.findAllByclientDetailsClientName(registrationDoc.getColiveName());
+
+        if (clientUsers.isEmpty()) {
+            return;
+        }
+
+        User user = clientUsers.get(0);
+        Set<ClientAndRoomOnBoardId> clientDetails = user.getClientDetails();
+
+        if (clientDetails == null || clientDetails.isEmpty()) {
+            return;
+        }
+
+        for (ClientAndRoomOnBoardId clientDetail : clientDetails) {
+            if (!clientDetail.getClientName().equals(registrationDoc.getColiveName())) {
+                continue;
+            }
+
+            updateRoomStatusInRoomOnBoard(clientDetail, registrationDoc);
+        }
+    }
+
+    /**
+     * Updates the occupancy status of a specific room in the RoomOnBoardDocument.
+     *
+     * @param clientDetail    the client and room details
+     * @param registrationDoc the registration document being checked out
+     */
+    private void updateRoomStatusInRoomOnBoard(ClientAndRoomOnBoardId clientDetail, RegistrationDocument registrationDoc) {
+        Optional<RoomOnBoardDocument> roomOnBoardOpt = roomsOrHouseRepository.findById(clientDetail.getRoomOnBoardId());
+
+        if (roomOnBoardOpt.isEmpty()) {
+            return;
+        }
+
+        RoomOnBoardDocument roomOnBoard = roomOnBoardOpt.get();
+        Set<Room> rooms = roomOnBoard.getRooms();
+
+        if (rooms == null || rooms.isEmpty()) {
+            return;
+        }
+
+        boolean roomUpdated = false;
+        String clientUserName = registrationDoc.getColiveUserName();
+        RoomForRegistration checkedOutRoom = registrationDoc.getRoom();
+
+        for (Room room : rooms) {
+            if (!isRoomMatch(room, checkedOutRoom)) {
+                continue;
+            }
+
+            // Count remaining occupied registrations for this room
+            int occupiedCount = countOccupiedRegistrations(clientUserName, clientDetail.getClientCategory(), room);
+
+            // Update room occupancy status
+            if (occupiedCount > 0) {
+                room.setOccupied(Room.roomOccupied.PARTIALLY_OCCUPIED);
+            } else {
+                room.setOccupied(Room.roomOccupied.NOT_OCCUPIED);
+            }
+
+            roomUpdated = true;
+            break;
+        }
+
+        if (roomUpdated) {
+            roomOnBoard.setRooms(rooms);
+            roomsOrHouseRepository.save(roomOnBoard);
+        }
+    }
+
+    /**
+     * Checks if a room matches the checked-out room (by room number or house number).
+     *
+     * @param room           the room to check
+     * @param checkedOutRoom the room that was checked out
+     * @return true if rooms match, false otherwise
+     */
+    private boolean isRoomMatch(Room room, RoomForRegistration checkedOutRoom) {
+        if (room == null || checkedOutRoom == null) {
+            return false;
+        }
+
+        return (room.getRoomNumber() != null && room.getRoomNumber().equals(checkedOutRoom.getRoomNumber())) ||
+                (room.getHouseNumber() != null && room.getHouseNumber().equals(checkedOutRoom.getHouseNumber()));
+    }
+
+    /**
+     * Counts occupied registrations for a specific room based on client category.
+     *
+     * @param clientUserName the client user name
+     * @param clientCategory the client category (PG, HOSTEL, etc.)
+     * @param room           the room to check
+     * @return count of occupied registrations
+     */
+    private int countOccupiedRegistrations(String clientUserName, String clientCategory, Room room) {
+        List<RegistrationDocument> registrations;
+
+        if (clientCategory != null && (clientCategory.equals("PG") || clientCategory.equals("HOSTEL"))) {
+            registrations = registrationRepository.findByColiveNameAndColiveUserNameAndRoomForRegistrationRoomNumberAndOccupied(
+                    clientUserName, clientUserName, room.getRoomNumber(), Registration.roomOccupied.OCCUPIED);
+        } else {
+            registrations = registrationRepository.findByColiveUserNameAndColiveNameAndRoomForRegistrationHouseNumberAndOccupied(
+                    clientUserName, clientUserName, room.getHouseNumber(), Registration.roomOccupied.OCCUPIED);
+        }
+
+        return registrations.size();
     }
 
     /**
@@ -365,7 +578,7 @@ public class RegistrationService {
      * @return the updated registration if found, empty otherwise
      */
     public Optional<RegistrationWithRoomRequest> updateCheckOutDateByID(String id, Date checkOutDate) {
-        return checkout (new UpdateUserForCheckOut(id, checkOutDate));
+        return checkout(new UpdateUserForCheckOut(id, checkOutDate));
     }
 
     /**
@@ -383,6 +596,7 @@ public class RegistrationService {
      */
     public List<RegistrationWithRoomRequest> findRoomsWithVacatedaStatus() {
         return registrationRepository.findByOccupied(Registration.roomOccupied.VACATED).stream()
+                .filter(doc -> doc.getCheckOutDate() != null && !doc.getCheckOutDate().toString().isBlank()&& doc.getActive()!= null && !doc.getActive())
                 .map(doc -> toDto(doc)).limit(500)
                 .collect(Collectors.toList());
     }
@@ -414,14 +628,14 @@ public class RegistrationService {
         return registrationRepository.existsById(id);
     }
 
-    private RegistrationDocument toDocumentWithId(String id, Registration dto, Room room) {
+    private RegistrationDocument toDocumentWithId(String id, Registration dto, RoomForRegistration room) {
         RegistrationDocument registrationDocument = toDocument(dto, room);
         registrationDocument.setId(id);
         registrationDocument.setOccupied(Registration.roomOccupied.OCCUPIED);
         return registrationDocument;
     }
 
-    private RegistrationDocument toDocument(Registration dto, Room room) {
+    private RegistrationDocument toDocument(Registration dto, RoomForRegistration room) {
         return RegistrationDocument.builder()
                 .fname(dto.getFname())
                 .lname(dto.getLname())
@@ -431,15 +645,15 @@ public class RegistrationService {
                 .gender(dto.getGender())
                 .address(dto.getAddress())
                 .pincode(dto.getPincode())
-                .uploadDocuments(dto.getUploadDocuments())
-                .photo(dto.getPhoto())
+                .aadharPhotoPath(dto.getAadharPhotoPath())
+                .documentUploadPath(dto.getDocumentUploadPath())
                 .documentType(dto.getDocumentType())
                 .documentNumber(dto.getDocumentNumber())
                 .checkInDate(dto.getCheckInDate())
                 .checkOutDate(dto.getCheckOutDate())
                 .occupied(dto.getRoomOccupied())
-                .clientUserName(dto.getClientUserName())
-                .clientName(dto.getClientName())
+                .coliveUserName(dto.getColiveUserName())
+                .coliveName(dto.getColiveName())
                 .roomRent(dto.getRoomRent())
                 .room(room)
                 .build();
@@ -455,16 +669,16 @@ public class RegistrationService {
         dto.setGender(doc.getGender());
         dto.setAddress(doc.getAddress());
         dto.setPincode(doc.getPincode());
-        dto.setUploadDocuments(doc.getUploadDocuments());
-        dto.setPhoto(doc.getPhoto());
+        dto.setAadharPhotoPath(doc.getAadharPhotoPath());
+        dto.setDocumentUploadPath(doc.getDocumentUploadPath());
         dto.setDocumentType(doc.getDocumentType());
         dto.setDocumentNumber(doc.getDocumentNumber());
         dto.setCheckInDate(doc.getCheckInDate());
         dto.setCheckOutDate(doc.getCheckOutDate());
         dto.setAdvanceAmount(doc.getAdvanceAmount());
         dto.setRoomOccupied(doc.getOccupied());
-        dto.setClientUserName(doc.getClientUserName());
-        dto.setClientName(doc.getClientName());
+        dto.setColiveUserName(doc.getColiveUserName());
+        dto.setColiveName(doc.getColiveName());
         dto.setRoomRent(doc.getRoomRent());
         dto.setRegId(doc.getId());
         return dto;
@@ -475,12 +689,11 @@ public class RegistrationService {
         dtoWithRoom.setRegistration(toRegistration(doc));
         dtoWithRoom.setId(doc.getId());
         if (doc.getRoom() != null) {
-            Room room = new Room();
+            RoomForRegistration room = new RoomForRegistration();
             room.setRoomNumber(doc.getRoom().getRoomNumber());
             room.setHouseNumber(doc.getRoom().getHouseNumber());
             room.setRoomType(doc.getRoom().getRoomType());
             room.setHouseType(doc.getRoom().getHouseType());
-            room.setOccupied(doc.getRoom().getOccupied());
             dtoWithRoom.setRoom(room);
         }
         return dtoWithRoom;
@@ -507,4 +720,297 @@ public class RegistrationService {
         System.err.println("Failed to send registration notifications for " + dto.getFname() + " after 3 attempts: " + e.getMessage());
         // Could implement additional recovery logic here, like saving to a retry queue
     }
-}
+
+    /**
+     * Updates registration with full file management capabilities
+     * - Deletes old files if they exist
+     * - Uploads new files
+     * - Updates file paths in database
+     *
+     * @param id                  Registration ID
+     * @param dto                 Registration DTO with new data
+     * @param room                Room DTO
+     * @param changingRoom        Whether room is being changed
+     * @param newAadharPhotoBytes New aadhar photo (optional)
+     * @param newDocumentBytes    New document (optional)
+     * @return Updated registration
+     */
+    public Optional<RegistrationWithRoomRequest> updateWithFiles(String id, Registration dto, RoomForRegistration room,
+                                                                 Boolean changingRoom,
+                                                                 byte[] newAadharPhotoBytes,
+                                                                 byte[] newDocumentBytes) {
+        return registrationRepository.findById(id)
+                .map(existing -> {
+                    // Handle aadhar photo: delete old if exists, upload new if provided
+                    if (existing.getAadharPhotoPath() != null && !existing.getAadharPhotoPath().isBlank()) {
+                        if (newAadharPhotoBytes != null) {
+                            try {
+                                if (fileStorageService.fileExists(existing.getAadharPhotoPath())) {
+                                    fileStorageService.deleteFile(existing.getAadharPhotoPath());
+                                    log.info("Old aadhar photo deleted for registration: {}", id);
+                                }
+                            } catch (Exception e) {
+                                log.warn("Failed to delete old aadhar photo for registration: {}", id, e);
+                            }
+                        }
+                    }
+
+                    // Upload new aadhar photo
+                    if (newAadharPhotoBytes != null && newAadharPhotoBytes.length > 0) {
+                        try {
+                            String fileName = fileStorageService.generateFileName(id, "aadhar.jpg", "aadhar");
+                            String newPath = fileStorageService.uploadFile(fileName, newAadharPhotoBytes, "image/jpeg");
+                            dto.setAadharPhotoPath(newPath);
+                            log.info("New aadhar photo uploaded for registration: {} at path: {}", id, newPath);
+                        } catch (Exception e) {
+                            log.error("Failed to upload new aadhar photo for registration: {}", id, e);
+                            dto.setAadharPhotoPath(existing.getAadharPhotoPath());
+                        }
+                    } else {
+                        dto.setAadharPhotoPath(existing.getAadharPhotoPath());
+                    }
+
+                    // Handle document: delete old if exists, upload new if provided
+                    if (existing.getDocumentUploadPath() != null && !existing.getDocumentUploadPath().isBlank()) {
+                        if (newDocumentBytes != null) {
+                            try {
+                                if (fileStorageService.fileExists(existing.getDocumentUploadPath())) {
+                                    fileStorageService.deleteFile(existing.getDocumentUploadPath());
+                                    log.info("Old document deleted for registration: {}", id);
+                                }
+                            } catch (Exception e) {
+                                log.warn("Failed to delete old document for registration: {}", id, e);
+                            }
+                        }
+                    }
+
+                    // Upload new document
+                    if (newDocumentBytes != null && newDocumentBytes.length > 0) {
+                        try {
+                            String fileName = fileStorageService.generateFileName(id, "document.pdf", "document");
+                            String newPath = fileStorageService.uploadFile(fileName, newDocumentBytes, "application/pdf");
+                            dto.setDocumentUploadPath(newPath);
+                            log.info("New document uploaded for registration: {} at path: {}", id, newPath);
+                        } catch (Exception e) {
+                            log.error("Failed to upload new document for registration: {}", id, e);
+                            dto.setDocumentUploadPath(existing.getDocumentUploadPath());
+                        }
+                    } else {
+                        dto.setDocumentUploadPath(existing.getDocumentUploadPath());
+                    }
+
+                    RegistrationDocument doc = toDocument(dto, room);
+                    doc.setId(id);
+
+                    boolean isInitialRegistration = isInitialRegistrationId(id);
+                    boolean shouldKeepExistingRoom = isInitialRegistration && existing.getRoom() != null && !changingRoom;
+
+                    if (shouldKeepExistingRoom) {
+                        doc.setRoom(existing.getRoom());
+                    } else {
+                        doc.setRoom(room);
+                        doc.setId(generateUpdateId());
+                    }
+
+                    doc = registrationRepository.save(doc);
+
+                    if (changingRoom) {
+                        registrationRepository.deleteById(id);
+                    }
+
+                    return toDto(doc);
+                });
+    }
+
+    /**
+     * Downloads a file for a registration using FileStorageService.downloadFile()
+     * Retrieves file content by path
+     *
+     * @param registrationId Registration ID
+     * @param fileType       Type of file ("aadhar" or "document")
+     * @return File content as byte array
+     */
+    public byte[] downloadFile(String registrationId, String fileType) {
+        return registrationRepository.findById(registrationId)
+                .map(doc -> {
+                    String filePath = "aadhar".equalsIgnoreCase(fileType)
+                            ? doc.getAadharPhotoPath()
+                            : doc.getDocumentUploadPath();
+
+                    if (filePath == null || filePath.isBlank()) {
+                        throw new IllegalArgumentException("No " + fileType + " file found for registration: " + registrationId);
+                    }
+
+                    try {
+                        byte[] content = fileStorageService.downloadFile(filePath);
+                        log.info("File downloaded for registration: {}, type: {}, size: {} bytes", registrationId, fileType, content.length);
+                        return content;
+                    } catch (Exception e) {
+                        log.error("Failed to download {} for registration: {}", fileType, registrationId, e);
+                        throw new RuntimeException("Failed to download file: " + e.getMessage(), e);
+                    }
+                })
+                .orElseThrow(() -> new IllegalArgumentException("Registration not found: " + registrationId));
+    }
+
+    /**
+     * Checks if file exists for a registration using FileStorageService.fileExists()
+     *
+     * @param registrationId Registration ID
+     * @param fileType       Type of file ("aadhar" or "document")
+     * @return true if file exists, false otherwise
+     */
+    public boolean fileExists(String registrationId, String fileType) {
+        return registrationRepository.findById(registrationId)
+                .map(doc -> {
+                    String filePath = "aadhar".equalsIgnoreCase(fileType)
+                            ? doc.getAadharPhotoPath()
+                            : doc.getDocumentUploadPath();
+
+                    if (filePath == null || filePath.isBlank()) {
+                        return false;
+                    }
+
+                    try {
+                        boolean exists = fileStorageService.fileExists(filePath);
+                        log.info("File exists check for registration: {}, type: {}, result: {}", registrationId, fileType, exists);
+                        return exists;
+                    } catch (Exception e) {
+                        log.warn("Error checking file existence for registration: {}, type: {}", registrationId, fileType, e);
+                        return false;
+                    }
+                })
+                .orElse(false);
+    }
+
+    /**
+     * Deletes files for a registration using FileStorageService.deleteFile()
+     * Deletes both aadhar photo and document if they exist
+     * Called when member/tenant is removed
+     *
+     * @param registrationId Registration ID
+     */
+    public void deleteRegistrationFiles(String registrationId) {
+        registrationRepository.findById(registrationId)
+                .ifPresent(doc -> {
+                    // Delete aadhar photo
+                    if (doc.getAadharPhotoPath() != null && !doc.getAadharPhotoPath().isBlank()) {
+                        try {
+                            if (fileStorageService.fileExists(doc.getAadharPhotoPath())) {
+                                fileStorageService.deleteFile(doc.getAadharPhotoPath());
+                                log.info("Aadhar photo deleted for registration: {}", registrationId);
+                            }
+                        } catch (Exception e) {
+                            log.warn("Failed to delete aadhar photo for registration: {}", registrationId, e);
+                        }
+                    }
+
+                    // Delete document
+                    if (doc.getDocumentUploadPath() != null && !doc.getDocumentUploadPath().isBlank()) {
+                        try {
+                            if (fileStorageService.fileExists(doc.getDocumentUploadPath())) {
+                                fileStorageService.deleteFile(doc.getDocumentUploadPath());
+                                log.info("Document deleted for registration: {}", registrationId);
+                            }
+                        } catch (Exception e) {
+                            log.warn("Failed to delete document for registration: {}", registrationId, e);
+                        }
+                    }
+                });
+    }
+
+    /**
+     * Replaces a single file using FileStorageService methods
+     * Handles deletion of old file and upload of new one
+     *
+     * @param registrationId Registration ID
+     * @param fileType       Type of file to replace ("aadhar" or "document")
+     * @param newFileBytes   New file content
+     * @param contentType    MIME type of file
+     * @return New file path
+     */
+    public String replaceRegistrationFile(String registrationId, String fileType, byte[] newFileBytes, String contentType) {
+        return registrationRepository.findById(registrationId)
+                .map(doc -> {
+                    String oldPath = "aadhar".equalsIgnoreCase(fileType)
+                            ? doc.getAadharPhotoPath()
+                            : doc.getDocumentUploadPath();
+
+                    // Delete old file using fileStorageService.deleteFile()
+                    if (oldPath != null && !oldPath.isBlank()) {
+                        try {
+                            if (fileStorageService.fileExists(oldPath)) {
+                                fileStorageService.deleteFile(oldPath);
+                                log.info("Old {} file deleted for registration: {}", fileType, registrationId);
+                            }
+                        } catch (Exception e) {
+                            log.warn("Failed to delete old {} for registration: {}", fileType, registrationId, e);
+                        }
+                    }
+                    // Upload new file using fileStorageService.uploadFile()
+                    if (newFileBytes != null && newFileBytes.length > 0) {
+                        try {
+                            String fileName = fileStorageService.generateFileName(registrationId, fileType + ".file", fileType);
+                            String newPath = fileStorageService.uploadFile(fileName, newFileBytes, contentType);
+
+                            // Update registration document
+                            if ("aadhar".equalsIgnoreCase(fileType)) {
+                                doc.setAadharPhotoPath(newPath);
+                            } else {
+                                doc.setDocumentUploadPath(newPath);
+                            }
+                            registrationRepository.save(doc);
+
+                            log.info("New {} file uploaded for registration: {} at path: {}", fileType, registrationId, newPath);
+                            return newPath;
+                        } catch (Exception e) {
+                            log.error("Failed to upload new {} for registration: {}", fileType, registrationId, e);
+                            throw new RuntimeException("Failed to upload file: " + e.getMessage(), e);
+                        }
+                    } else {
+                        throw new IllegalArgumentException("File content cannot be empty");
+                    }
+                })
+                .orElseThrow(() -> new IllegalArgumentException("Registration not found: " + registrationId));
+    }
+
+    /**
+     * Gets file information for a registration
+     * Returns both file paths using generateFileName reference and their existence status using fileExists()
+     *
+     * @param registrationId Registration ID
+     * @return Map with file information
+     */
+    public Map<String, Object> getRegistrationFileInfo(String registrationId) {
+        return registrationRepository.findById(registrationId)
+                .map(doc -> {
+                    Map<String, Object> fileInfo = new HashMap<>();
+
+                    // Aadhar photo info
+                    Map<String, Object> aadharInfo = new HashMap<>();
+                    aadharInfo.put("path", doc.getAadharPhotoPath());
+                    if (doc.getAadharPhotoPath() != null && !doc.getAadharPhotoPath().isBlank()) {
+                        aadharInfo.put("exists", fileStorageService.fileExists(doc.getAadharPhotoPath()));
+                    } else {
+                        aadharInfo.put("exists", false);
+                    }
+                    fileInfo.put("aadhar", aadharInfo);
+
+                    // Document info
+                    Map<String, Object> documentInfo = new HashMap<>();
+                    documentInfo.put("path", doc.getDocumentUploadPath());
+                    if (doc.getDocumentUploadPath() != null && !doc.getDocumentUploadPath().isBlank()) {
+                        documentInfo.put("exists", fileStorageService.fileExists(doc.getDocumentUploadPath()));
+                    } else {
+                        documentInfo.put("exists", false);
+                    }
+                    fileInfo.put("document", documentInfo);
+
+                    return fileInfo;
+                })
+                .orElseThrow(() -> new IllegalArgumentException("Registration not found: " + registrationId));
+        }
+    }
+
+
+

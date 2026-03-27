@@ -1,7 +1,7 @@
 package com.elite4.anandan.registrationservices.document;
 
 import com.elite4.anandan.registrationservices.dto.Registration;
-import com.elite4.anandan.registrationservices.dto.Room;
+import com.elite4.anandan.registrationservices.dto.RoomForRegistration;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -28,17 +28,20 @@ public class RegistrationDocument {
     private Registration.Gender gender;
     private String address;
     private String pincode;
-    private Registration.UploadDocuments uploadDocuments;
-    private String photo;
+    private String aadharPhotoPath;
+    private String documentUploadPath;
     private Registration.DocumentType documentType;
     private String documentNumber;
     private Date checkInDate;
     private Date checkOutDate;
-    private String clientName;
-    private String clientUserName;
+    private String coliveName;
+    private String coliveUserName;
     private Registration.roomOccupied occupied;
-    private Room room;
+    private RoomForRegistration room;
+    private String parentName;
+    private String parentContactNo;
     private double advanceAmount;
     private double roomRent;
+    private Boolean active;
 }
 

@@ -2,16 +2,14 @@ package com.elite4.anandan.registrationservices.controller;
 
 import com.elite4.anandan.registrationservices.dto.*;
 import com.elite4.anandan.registrationservices.service.RegistrationService;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
-import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
-
-import java.lang.reflect.Type;
-import java.time.LocalDate;
-import java.util.Date;
+import org.springframework.web.multipart.MultipartFile;
+import java.io.IOException;
 import java.util.List;
 import java.util.Set;
 
@@ -23,22 +21,30 @@ import org.springframework.web.bind.annotation.CrossOrigin;
 public class RegistrationController {
 
     private final RegistrationService registrationService;
+    private final ObjectMapper objectMapper;
 
     @PostMapping("/onboardUser")
     @PreAuthorize("hasAnyRole('USER','ADMIN','MODERATOR')")
-    public ResponseEntity<RegistrationWithRoomRequest> create(@RequestBody RegistrationWithRoomRequest request) {
-        RegistrationWithRoomRequest created = registrationService.create(
-                request.getRegistration(),
-                request.getRoom());
-        return ResponseEntity.status(HttpStatus.CREATED).body(created);
-    }
+    public ResponseEntity<RegistrationWithRoomRequest> create(
+            @RequestParam String registration,
+            @RequestParam String room,
+            @RequestParam(required = true) MultipartFile aadharPhoto,
+            @RequestParam(required = true) MultipartFile documentUpload) throws IOException {
 
-    @PutMapping("/updateUser/{id}")
-    @PreAuthorize("hasAnyRole('USER','ADMIN','MODERATOR')")
-    public ResponseEntity<RegistrationWithRoomRequest> update(@PathVariable String id,@RequestBody RegistrationWithRoomRequest request,@RequestParam Boolean changingRoom) {
-        return registrationService.update(id, request.getRegistration(),request.getRoom(),changingRoom)
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
+        // Parse JSON strings to objects
+        Registration registrationDto = objectMapper.readValue(registration, Registration.class);
+        RoomForRegistration roomDto = objectMapper.readValue(room, RoomForRegistration.class);
+
+        // Convert files to byte arrays if present
+        byte[] aadharPhotoBytes = aadharPhoto != null && !aadharPhoto.isEmpty() ? aadharPhoto.getBytes() : null;
+        byte[] documentUploadBytes = documentUpload != null && !documentUpload.isEmpty() ? documentUpload.getBytes() : null;
+
+        RegistrationWithRoomRequest created = registrationService.createWithFiles(
+                registrationDto,
+                roomDto,
+                aadharPhotoBytes,
+                documentUploadBytes);
+        return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
 
     @PutMapping("/checkout")
@@ -51,14 +57,14 @@ public class RegistrationController {
 
     @PutMapping("/checkoutAllMembers")
     @PreAuthorize("hasAnyRole('ADMIN','MODERATOR')")
-    public ResponseEntity<String> checkOutAllDateById(@RequestBody UserForCheckOutForAll userForCheckOutForAll) {
-         return registrationService.checkoutAll(userForCheckOutForAll);
+    public ResponseEntity<String> checkOutAllDateById(@RequestBody Set<UpdateUserForCheckOut> userForCheckOutForAll) {
+        return registrationService.checkoutAll(userForCheckOutForAll);
     }
 
     @PostMapping("/usersForClient")
     @PreAuthorize("hasAnyRole('ADMIN','MODERATOR','USER','GUEST')")
-    public ResponseEntity<List<RegistrationWithRoomRequest>> findByClientUserNameAndClientName(@RequestBody GetUserInfoByClient getUserInfoByClient) {
-        List<RegistrationWithRoomRequest> result = registrationService.findByClientUserNameAndClientName(getUserInfoByClient.getClientUserName(), getUserInfoByClient.getClientName());
+    public ResponseEntity<List<RegistrationWithRoomRequest>> findByColiveNameAndColiveUserName(@RequestBody GetUserInfoByClient getUserInfoByClient) {
+        List<RegistrationWithRoomRequest> result = registrationService.findByColiveNameAndColiveUserName(getUserInfoByClient.getColiveUserName(), getUserInfoByClient.getColiveName());
         if (result.isEmpty()) {
             return ResponseEntity.notFound().build();
         }
@@ -211,5 +217,112 @@ public class RegistrationController {
         return ResponseEntity.noContent().build();
     }
 
-    
+    /**
+     * Update member/tenant with file replacements
+     * Handles deletion of old files and upload of new ones
+     */
+    @PutMapping("/updateUser/{id}")
+    @PreAuthorize("hasAnyRole('USER','ADMIN','MODERATOR')")
+    public ResponseEntity<RegistrationWithRoomRequest> updateWithFiles(
+            @PathVariable String id,
+            @RequestParam String registration,
+            @RequestParam String room,
+            @RequestParam Boolean changingRoom,
+            @RequestParam(required = false) MultipartFile newAadharPhoto,
+            @RequestParam(required = false) MultipartFile newDocument) throws IOException {
+
+        Registration registrationDto = objectMapper.readValue(registration, Registration.class);
+        RoomForRegistration roomDto = objectMapper.readValue(room, RoomForRegistration.class);
+
+        byte[] aadharPhotoBytes = newAadharPhoto != null && !newAadharPhoto.isEmpty() ? newAadharPhoto.getBytes() : null;
+        byte[] documentBytes = newDocument != null && !newDocument.isEmpty() ? newDocument.getBytes() : null;
+
+        return registrationService.updateWithFiles(id, registrationDto, roomDto, changingRoom, aadharPhotoBytes, documentBytes)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
+
+    /**
+     * Download file for a member/tenant
+     * Supports downloading aadhar photo or document
+     */
+    @GetMapping("/downloadFile/{registrationId}/{fileType}")
+    @PreAuthorize("hasAnyRole('USER','ADMIN','MODERATOR')")
+    public ResponseEntity<byte[]> downloadFile(
+            @PathVariable String registrationId,
+            @PathVariable String fileType) {
+        try {
+            byte[] fileContent = registrationService.downloadFile(registrationId, fileType);
+            String contentType = "aadhar".equalsIgnoreCase(fileType) ? "image/jpeg" : "application/pdf";
+            return ResponseEntity.ok()
+                    .header("Content-Type", contentType)
+                    .header("Content-Disposition", "attachment; filename=\"" + fileType + "\"")
+                    .body(fileContent);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.notFound().build();
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    /**
+     * Check if file exists for a member/tenant
+     */
+    @GetMapping("/fileExists/{registrationId}/{fileType}")
+    @PreAuthorize("hasAnyRole('USER','ADMIN','MODERATOR')")
+    public ResponseEntity<Boolean> fileExists(
+            @PathVariable String registrationId,
+            @PathVariable String fileType) {
+        return ResponseEntity.ok(registrationService.fileExists(registrationId, fileType));
+    }
+
+    /**
+     * Delete all files for a member/tenant (called during member removal)
+     */
+    @DeleteMapping("/deleteFiles/{registrationId}")
+    @PreAuthorize("hasAnyRole('ADMIN','MODERATOR')")
+    public ResponseEntity<Void> deleteRegistrationFiles(@PathVariable String registrationId) {
+        if (!registrationService.existsById(registrationId)) {
+            return ResponseEntity.notFound().build();
+        }
+        registrationService.deleteRegistrationFiles(registrationId);
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Replace a single file (aadhar or document) for a member/tenant
+     */
+    @PostMapping("/replaceFile/{registrationId}/{fileType}")
+    @PreAuthorize("hasAnyRole('USER','ADMIN','MODERATOR')")
+    public ResponseEntity<String> replaceRegistrationFile(
+            @PathVariable String registrationId,
+            @PathVariable String fileType,
+            @RequestParam MultipartFile file) throws IOException {
+        try {
+            String contentType = "aadhar".equalsIgnoreCase(fileType) ? "image/jpeg" : "application/pdf";
+            String newPath = registrationService.replaceRegistrationFile(
+                    registrationId, fileType, file.getBytes(), contentType);
+            return ResponseEntity.ok(newPath);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.notFound().build();
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    /**
+     * Get file information for a member/tenant
+     * Returns both file paths and their existence status
+     */
+    @GetMapping("/fileInfo/{registrationId}")
+    @PreAuthorize("hasAnyRole('USER','ADMIN','MODERATOR')")
+    public ResponseEntity<?> getRegistrationFileInfo(@PathVariable String registrationId) {
+        try {
+            return ResponseEntity.ok(registrationService.getRegistrationFileInfo(registrationId));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.notFound().build();
+        }
+    }
+
+
 }

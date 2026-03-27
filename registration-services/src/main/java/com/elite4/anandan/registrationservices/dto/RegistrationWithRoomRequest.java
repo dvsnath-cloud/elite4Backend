@@ -5,6 +5,6 @@ import lombok.Data;
 @Data
 public class RegistrationWithRoomRequest {
     private Registration registration;
-    private Room room;
+    private RoomForRegistration room;
     private String id;
 }
