@@ -3,10 +3,14 @@ package com.elite4.anandan.registrationservices.dto;
 import java.time.Instant;
 import java.util.List;
 import java.util.Set;
+import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.annotation.JsonInclude;
 
 /**
  * Response DTO for user data (excludes sensitive fields like password).
+ * Null fields are automatically excluded from JSON serialization.
  */
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class UserResponse {
 
     private String id;
@@ -14,11 +18,14 @@ public class UserResponse {
     private String email;
     private Set<String> roleIds;
     private boolean active;
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", timezone = "UTC")
     private Instant createdAt;
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", timezone = "UTC")
     private Instant updatedAt;
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", timezone = "UTC")
     private Instant lastLoginAt;
     private String phoneNumber;
-    private Set<ClientNameAndRooms> clientNameAndRooms;
+    private Set<ColiveNameAndRooms> coliveNameAndRooms;
     private List<String> roleNames;
 
     public String getId() {
@@ -85,12 +92,12 @@ public class UserResponse {
         this.lastLoginAt = lastLoginAt;
     }
 
-    public Set<ClientNameAndRooms> getClientNameAndRooms() {
-        return clientNameAndRooms;
+    public Set<ColiveNameAndRooms> getClientNameAndRooms() {
+        return coliveNameAndRooms;
     }
 
-    public void setClientNameAndRooms(Set<ClientNameAndRooms> clientNameAndRooms) {
-        this.clientNameAndRooms = clientNameAndRooms;
+    public void setClientNameAndRooms(Set<ColiveNameAndRooms> coliveNameAndRooms) {
+        this.coliveNameAndRooms = coliveNameAndRooms;
     }
 
     public String getPhoneNumber() {

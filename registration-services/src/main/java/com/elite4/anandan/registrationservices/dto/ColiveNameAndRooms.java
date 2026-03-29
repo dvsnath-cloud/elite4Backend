@@ -6,14 +6,15 @@ import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
+import com.fasterxml.jackson.annotation.JsonInclude;
 
-import java.util.LinkedHashSet;
 import java.util.Set;
 
 @Data
-public class ClientNameAndRooms {
-    @NotBlank(message = "Client name is required")
-    private String clientName;
+@JsonInclude(JsonInclude.Include.NON_NULL)
+public class ColiveNameAndRooms {
+    @NotBlank(message = "CoLive name is required")
+    private String coliveName;
 
     @NotNull(message = "CategoryType is required")
     private categoryValues categoryType;
@@ -26,6 +27,11 @@ public class ClientNameAndRooms {
     @NotEmpty(message = "At least one ROOM OR HOUSE details are required")
     @Size(max = 500, message = "No more than 500 client names are allowed")
     private Set<Room> rooms;
+
+    private String aadharPhotoPath;
+    private String documentUploadPath;
+    private String documentType;
+    private String documentNumber;
 
     public enum categoryValues {
         HOUSE, PG, FLAT, HOSTEL

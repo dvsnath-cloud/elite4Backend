@@ -15,11 +15,13 @@ public interface UserRepository extends MongoRepository<User, String> {
 
     Optional<User> findByPhoneE164(String phoneE164);
 
+    Optional<User> findByPhoneRaw(String phoneRaw);
+
     Optional<User> findByUsername(String username);
 
-    Optional<User>findByclientDetailsClientName(String clientName);
+    Optional<User>findByclientDetailsColiveName(String clientName);
 
-    List<User> findAllByclientDetailsClientName(String clientName);
+    List<User> findAllByclientDetailsColiveName(String clientName);
 
     Optional<User> findByEmail(String email);
 

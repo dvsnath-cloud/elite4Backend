@@ -105,7 +105,7 @@ public class RegistrationService {
             boolean roomFound = false;
             StringBuilder availableRooms = new StringBuilder();
             for (ClientAndRoomOnBoardId clientDetail : clientAndRoomOnBoardIds) {
-                if (clientDetail.getClientName().equals(dto.getColiveName())) {
+                if (clientDetail.getColiveName().equals(dto.getColiveName())) {
                     if (clientDetail.getRoomOnBoardId() == null) {
                         continue;
                     }
@@ -287,11 +287,11 @@ public class RegistrationService {
                     doc.setId(id);
                     // Determine room assignment and whether to update ID
                     boolean isInitialRegistration = isInitialRegistrationId(id);
-                    boolean shouldKeepExistingRoom = isInitialRegistration && existing.getRoom() != null && !changingRoom;
+                    boolean shouldKeepExistingRoom = isInitialRegistration && existing.getRoomForRegistration() != null && !changingRoom;
                     if (shouldKeepExistingRoom) {
-                        doc.setRoom(existing.getRoom());
+                        doc.setRoomForRegistration(existing.getRoomForRegistration());
                     } else {
-                        doc.setRoom(room);
+                        doc.setRoomForRegistration(room);
                         // Generate new ID for update if not an initial registration or room is changing
                         doc.setId(generateUpdateId());
                     }
@@ -311,7 +311,7 @@ public class RegistrationService {
      * @return true if ID starts with H- or R-, false otherwise
      */
     private boolean isInitialRegistrationId(String id) {
-        return id != null && (id.startsWith("H-") || id.startsWith("R-"));
+        return id != null && (id.startsWith("H-") || id.startsWith("R-")|| id.startsWith("N-"));
     }
 
     /**
@@ -338,7 +338,7 @@ public class RegistrationService {
     }
 
     public Optional<RegistrationWithRoomRequest> findByContactNo(String contactNo) {
-        Optional<RegistrationDocument> reg = registrationRepository.findByContactNo(String.valueOf(contactNo));
+        Optional<RegistrationDocument> reg = registrationRepository.findByContactNo(String.valueOf(contactNo).trim());
         if (reg.isPresent()) {
             return reg.map(this::toDto);
         } else {
@@ -387,7 +387,7 @@ public class RegistrationService {
     }
 
     public List<RegistrationWithRoomRequest> findAllByHouseType(String clientUserName, String clientName, String houseType) {
-        return registrationRepository.findAllByColivetUserNameAndColiveNameAndRoomForRegistrationHouseType(clientUserName, clientName, houseType).stream().map(this::toDto).collect(Collectors.toList());
+        return registrationRepository.findAllByColiveUserNameAndColiveNameAndRoomForRegistrationHouseType(clientUserName, clientName, houseType).stream().map(this::toDto).collect(Collectors.toList());
     }
 
     public List<RegistrationWithRoomRequest> findAllByGender(Registration.Gender gender) {
@@ -462,7 +462,7 @@ public class RegistrationService {
      * @param registrationDoc the registration document that was checked out
      */
     private void updateRoomOccupancyAfterCheckout(RegistrationDocument registrationDoc) {
-        List<User> clientUsers = userRepository.findAllByclientDetailsClientName(registrationDoc.getColiveName());
+        List<User> clientUsers = userRepository.findAllByclientDetailsColiveName(registrationDoc.getColiveName());
 
         if (clientUsers.isEmpty()) {
             return;
@@ -476,7 +476,7 @@ public class RegistrationService {
         }
 
         for (ClientAndRoomOnBoardId clientDetail : clientDetails) {
-            if (!clientDetail.getClientName().equals(registrationDoc.getColiveName())) {
+            if (!clientDetail.getColiveName().equals(registrationDoc.getColiveName())) {
                 continue;
             }
 
@@ -506,7 +506,7 @@ public class RegistrationService {
 
         boolean roomUpdated = false;
         String clientUserName = registrationDoc.getColiveUserName();
-        RoomForRegistration checkedOutRoom = registrationDoc.getRoom();
+        RoomForRegistration checkedOutRoom = registrationDoc.getRoomForRegistration();
 
         for (Room room : rooms) {
             if (!isRoomMatch(room, checkedOutRoom)) {
@@ -630,6 +630,9 @@ public class RegistrationService {
 
     private RegistrationDocument toDocumentWithId(String id, Registration dto, RoomForRegistration room) {
         RegistrationDocument registrationDocument = toDocument(dto, room);
+        if(id==null){
+            id = "N" + "-" + UUID.randomUUID().toString().replace("-", "").substring(0, 14);
+        }
         registrationDocument.setId(id);
         registrationDocument.setOccupied(Registration.roomOccupied.OCCUPIED);
         return registrationDocument;
@@ -655,7 +658,9 @@ public class RegistrationService {
                 .coliveUserName(dto.getColiveUserName())
                 .coliveName(dto.getColiveName())
                 .roomRent(dto.getRoomRent())
-                .room(room)
+                .roomForRegistration(room)
+                .parentContactNo(dto.getParentContactNo())
+                .parentName(dto.getParentName())
                 .build();
     }
 
@@ -680,6 +685,8 @@ public class RegistrationService {
         dto.setColiveUserName(doc.getColiveUserName());
         dto.setColiveName(doc.getColiveName());
         dto.setRoomRent(doc.getRoomRent());
+        dto.setParentContactNo(doc.getParentContactNo());
+        dto.setParentName(doc.getParentName());
         dto.setRegId(doc.getId());
         return dto;
     }
@@ -688,12 +695,12 @@ public class RegistrationService {
         RegistrationWithRoomRequest dtoWithRoom = new RegistrationWithRoomRequest();
         dtoWithRoom.setRegistration(toRegistration(doc));
         dtoWithRoom.setId(doc.getId());
-        if (doc.getRoom() != null) {
+        if (doc.getRoomForRegistration() != null) {
             RoomForRegistration room = new RoomForRegistration();
-            room.setRoomNumber(doc.getRoom().getRoomNumber());
-            room.setHouseNumber(doc.getRoom().getHouseNumber());
-            room.setRoomType(doc.getRoom().getRoomType());
-            room.setHouseType(doc.getRoom().getHouseType());
+            room.setRoomNumber(doc.getRoomForRegistration().getRoomNumber());
+            room.setHouseNumber(doc.getRoomForRegistration().getHouseNumber());
+            room.setRoomType(doc.getRoomForRegistration().getRoomType());
+            room.setHouseType(doc.getRoomForRegistration().getHouseType());
             dtoWithRoom.setRoom(room);
         }
         return dtoWithRoom;
@@ -803,12 +810,12 @@ public class RegistrationService {
                     doc.setId(id);
 
                     boolean isInitialRegistration = isInitialRegistrationId(id);
-                    boolean shouldKeepExistingRoom = isInitialRegistration && existing.getRoom() != null && !changingRoom;
+                    boolean shouldKeepExistingRoom = isInitialRegistration && existing.getRoomForRegistration() != null && !changingRoom;
 
                     if (shouldKeepExistingRoom) {
-                        doc.setRoom(existing.getRoom());
+                        doc.setRoomForRegistration(existing.getRoomForRegistration());
                     } else {
-                        doc.setRoom(room);
+                        doc.setRoomForRegistration(room);
                         doc.setId(generateUpdateId());
                     }
 

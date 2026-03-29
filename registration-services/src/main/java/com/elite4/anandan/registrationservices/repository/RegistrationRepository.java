@@ -15,7 +15,7 @@ public interface RegistrationRepository extends MongoRepository<RegistrationDocu
     Optional<RegistrationDocument> findByContactNo(String contactNo);
     List<RegistrationDocument> findByColiveNameAndColiveUserName(String coliveName, String coliveUserName);
     List<RegistrationDocument> findAllByColiveUserNameAndColiveNameAndRoomForRegistrationRoomType(String coliveUserName,String coliveName,String roomType);
-    List<RegistrationDocument> findAllByColivetUserNameAndColiveNameAndRoomForRegistrationHouseType(String coliveUserName,String coliveName,String houseType);
+    List<RegistrationDocument> findAllByColiveUserNameAndColiveNameAndRoomForRegistrationHouseType(String coliveUserName,String coliveName,String houseType);
     List<RegistrationDocument> findAllByGender(Registration.Gender gender);
     List<RegistrationDocument> findByfname(String fname);
     List<RegistrationDocument> findBylname(String lname);

@@ -1,7 +1,6 @@
 package com.elite4.anandan.registrationservices.service;
 
 import com.elite4.anandan.registrationservices.dto.ClientAndRoomOnBoardId;
-import com.elite4.anandan.registrationservices.dto.Room;
 import com.elite4.anandan.registrationservices.model.EmployeeRole;
 import com.elite4.anandan.registrationservices.model.Role;
 import com.elite4.anandan.registrationservices.model.User;
@@ -50,7 +49,7 @@ public class AdminBootstrap implements CommandLineRunner {
                 admin.setPhoneRaw("9611040912");
                 Set<ClientAndRoomOnBoardId> ClientAndRoomOnBoardIds = new HashSet<>();
                 ClientAndRoomOnBoardId clientAndRoomOnBoardId = new ClientAndRoomOnBoardId();
-                clientAndRoomOnBoardId.setClientName("my own");
+                clientAndRoomOnBoardId.setColiveName("my own");
                 clientAndRoomOnBoardId.setRoomOnBoardId("12345678");
                 ClientAndRoomOnBoardIds.add(clientAndRoomOnBoardId);
                 admin.setClientDetails(ClientAndRoomOnBoardIds);

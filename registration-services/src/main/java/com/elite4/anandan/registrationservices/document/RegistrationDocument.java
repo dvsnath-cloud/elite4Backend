@@ -37,7 +37,7 @@ public class RegistrationDocument {
     private String coliveName;
     private String coliveUserName;
     private Registration.roomOccupied occupied;
-    private RoomForRegistration room;
+    private RoomForRegistration roomForRegistration;
     private String parentName;
     private String parentContactNo;
     private double advanceAmount;

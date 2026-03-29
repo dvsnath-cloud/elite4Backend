@@ -19,10 +19,6 @@ public class UserCreateRequest {
     @Size(min = 3, max = 50)
     private String username;
 
-    @NotBlank(message = "ownerOfClient is required")
-    @Size(min = 3, max = 50)
-    private String ownerOfClient;
-
     @NotBlank(message = "Password is required")
     @Size(min = 8, message = "Password must be at least 8 characters")
     private String password;
@@ -38,7 +34,7 @@ public class UserCreateRequest {
 
     @NotEmpty(message = "At least one clientName is required")
     @Size(max = 50, message = "No more than 50 client names are allowed")
-    private Set<ClientNameAndRooms> clientDetails;
+    private Set<ColiveNameAndRooms> coliveDetails;
 
     private boolean active;
 

@@ -2,7 +2,7 @@ package com.elite4.anandan.registrationservices.service;
 
 import com.elite4.anandan.registrationservices.document.RoomOnBoardDocument;
 import com.elite4.anandan.registrationservices.dto.ClientAndRoomOnBoardId;
-import com.elite4.anandan.registrationservices.dto.ClientNameAndRooms;
+import com.elite4.anandan.registrationservices.dto.ColiveNameAndRooms;
 import com.elite4.anandan.registrationservices.dto.Room;
 import com.elite4.anandan.registrationservices.dto.UserResponse;
 import com.elite4.anandan.registrationservices.model.User;
@@ -189,12 +189,12 @@ public class AdminService {
         response.setUpdatedAt(user.getUpdatedAt());
         response.setLastLoginAt(user.getLastLoginAt());
         response.setPhoneNumber(user.getPhoneRaw());
-        Set<ClientNameAndRooms> clientNameAndRoomsSet = new HashSet<>();
+        Set<ColiveNameAndRooms> coliveNameAndRoomsSet = new HashSet<>();
         Set<ClientAndRoomOnBoardId> clientAndRoomOnBoardIds = user.getClientDetails();
         if (clientAndRoomOnBoardIds != null) {
             for(ClientAndRoomOnBoardId clientAndRoomOnBoardId : clientAndRoomOnBoardIds) {
-                ClientNameAndRooms clientNameAndRooms = new ClientNameAndRooms();
-                clientNameAndRooms.setClientName(clientAndRoomOnBoardId.getClientName());
+                ColiveNameAndRooms coliveNameAndRooms = new ColiveNameAndRooms();
+                coliveNameAndRooms.setColiveName(clientAndRoomOnBoardId.getColiveName());
                 Set<Room> roomNumbers = new HashSet<>();
                 // Only fetch rooms for this specific client, not all
                 String roomOnBoardId = clientAndRoomOnBoardId.getRoomOnBoardId();
@@ -211,16 +211,16 @@ public class AdminService {
                     }
                 }
 
-                clientNameAndRooms.setRooms(roomNumbers);
+                coliveNameAndRooms.setRooms(roomNumbers);
                 String category = clientAndRoomOnBoardId.getClientCategory();
                 if(category == null || category.trim().isEmpty()) {
-                    clientNameAndRooms.setCategoryType(null);
+                    coliveNameAndRooms.setCategoryType(null);
                 } else {
-                    clientNameAndRooms.setCategoryType(ClientNameAndRooms.categoryValues.valueOf(category));}
-                clientNameAndRoomsSet.add(clientNameAndRooms);
+                    coliveNameAndRooms.setCategoryType(ColiveNameAndRooms.categoryValues.valueOf(category));}
+                coliveNameAndRoomsSet.add(coliveNameAndRooms);
             }
         }
-        response.setClientNameAndRooms(clientNameAndRoomsSet);
+        response.setClientNameAndRooms(coliveNameAndRoomsSet);
         return response;
     }
 }

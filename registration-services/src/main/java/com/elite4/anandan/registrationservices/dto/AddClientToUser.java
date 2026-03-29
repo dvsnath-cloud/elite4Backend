@@ -24,7 +24,7 @@ public class AddClientToUser {
     private categoryValues categoryType;
 
     @NotBlank(message = "Client name is required")
-    private String clientName;
+    private String coliveName;
 
     @NotEmpty(message = "At least one room is required")
     private Set<@Valid Room> rooms;
@@ -35,4 +35,12 @@ public class AddClientToUser {
     public enum categoryValues {
         HOUSE, PG, FLAT, HOSTEL
     }
+
+    private String aadharPhotoPath;
+
+    private String documentUploadPath;
+
+    private String documentType;
+
+    private String documentNumber;
 }

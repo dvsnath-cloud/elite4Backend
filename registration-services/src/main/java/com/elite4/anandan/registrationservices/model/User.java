@@ -28,11 +28,6 @@ public class User {
     @Indexed(unique = true)
     private String username;
 
-    @NotBlank(message = "ownerOfClient is required")
-    @Size(min = 3, max = 50)
-    @Indexed(unique = true)
-    private String ownerOfClient;
-
     /* ================================
        AUTHENTICATION & SECURITY
        ================================ */
@@ -122,14 +117,6 @@ public class User {
 
     public void setUsername(String username) {
         this.username = username;
-    }
-
-    public String getOwnerOfClient() {
-        return ownerOfClient;
-    }
-
-    public void setOwnerOfClient(String ownerOfClient) {
-        this.ownerOfClient = ownerOfClient;
     }
 
     public String getPasswordHash() {

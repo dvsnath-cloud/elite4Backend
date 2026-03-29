@@ -50,11 +50,20 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         String jwt = resolveToken(request);
 
         if (jwt != null && tokenProvider.validateToken(jwt) && SecurityContextHolder.getContext().getAuthentication() == null) {
-            String username = tokenProvider.getUsernameFromToken(jwt);
-            Optional<User> userOpt = userRepository.findAll()
-                    .stream()
-                    .filter(u -> username.equals(u.getUsername()))
-                    .findFirst();
+            // Get email or phoneNumber from token (not username)
+            String emailOrPhone = tokenProvider.getEmailOrPhoneFromToken(jwt);
+
+            // Find user by email or phoneNumber
+            Optional<User> userOpt = Optional.empty();
+
+            // Try to find by email first
+            if (emailOrPhone.contains("@")) {
+                // It's an email (contains @)
+                userOpt = userRepository.findByEmail(emailOrPhone);
+            } else {
+                // It's a phone number
+                userOpt = userRepository.findByPhoneRaw(emailOrPhone);
+            }
 
             if (userOpt.isPresent()) {
                 User user = userOpt.get();
@@ -64,15 +73,18 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                         continue;
                     }
                     Optional<Role> savedRole  = roleRepository.findById(value);
-                    resolvedRoles.add(savedRole.get().getName().name());
+                    if (savedRole.isPresent()) {
+                        resolvedRoles.add(savedRole.get().getName().name());
+                    }
                 }
                 List<SimpleGrantedAuthority> authorities = resolvedRoles
                         .stream()
                         .map(SimpleGrantedAuthority::new)
                         .toList();
-                System.out.println("Authorities: " + authorities);
+
+                // Use email/phone as principal instead of username
                 UsernamePasswordAuthenticationToken authentication =
-                        new UsernamePasswordAuthenticationToken(username, null, authorities);
+                        new UsernamePasswordAuthenticationToken(emailOrPhone, null, authorities);
                 authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                 SecurityContextHolder.getContext().setAuthentication(authentication);
             }

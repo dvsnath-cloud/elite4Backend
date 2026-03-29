@@ -27,25 +27,41 @@ public class JwtTokenProvider {
         this.validityInMillis = validityInMillis;
     }
 
-    public String generateToken(String username) {
+    /**
+     * Generate JWT token using email or phoneNumber as subject
+     * Changed from username to email/phoneNumber for authentication
+     */
+    public String generateToken(String emailOrPhone) {
         Date now = new Date();
         Date expiry = new Date(now.getTime() + validityInMillis);
 
         return Jwts.builder()
-                .setSubject(username)
+                .setSubject(emailOrPhone)  // Changed: Now stores email or phone instead of username
                 .setIssuedAt(now)
                 .setExpiration(expiry)
                 .signWith(key, SignatureAlgorithm.HS256)
                 .compact();
     }
 
-    public String getUsernameFromToken(String token) {
+    /**
+     * Extract email or phoneNumber from token (was getUsernameFromToken)
+     * Changed method name to reflect new behavior
+     */
+    public String getEmailOrPhoneFromToken(String token) {
         Claims claims = Jwts.parserBuilder()
                 .setSigningKey(key)
                 .build()
                 .parseClaimsJws(token)
                 .getBody();
-        return claims.getSubject();
+        return claims.getSubject();  // Returns email or phoneNumber
+    }
+
+    /**
+     * Legacy method - kept for backward compatibility
+     * Now calls getEmailOrPhoneFromToken()
+     */
+    public String getUsernameFromToken(String token) {
+        return getEmailOrPhoneFromToken(token);  // Now returns email/phone instead of username
     }
 
     public boolean validateToken(String token) {

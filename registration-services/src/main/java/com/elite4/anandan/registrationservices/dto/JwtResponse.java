@@ -1,8 +1,12 @@
 package com.elite4.anandan.registrationservices.dto;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+
 /**
  * Response DTO containing JWT token and basic user info.
+ * Null fields are automatically excluded from JSON serialization.
  */
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class JwtResponse {
 
     private String token;
