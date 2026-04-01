@@ -4,8 +4,16 @@ import lombok.Data;
 
 @Data
 public class PaymentRequest {
-    private int amount; // in smallest currency unit, e.g. paise
+    private int amount;
     private String currency = "INR";
     private String email;
     private String phoneNumber;
+    private String receipt;
+    private String registrationId;
+    private String tenantName;
+    private String paymentFor = "monthly_rent";
+    private String description;
+    private String razorpayOrderId;
+    private String razorpayPaymentId;
+    private String razorpaySignature;
 }

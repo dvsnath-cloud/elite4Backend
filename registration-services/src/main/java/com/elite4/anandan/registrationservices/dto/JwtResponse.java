@@ -2,18 +2,14 @@ package com.elite4.anandan.registrationservices.dto;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 
-/**
- * Response DTO containing JWT token and basic user info.
- * Null fields are automatically excluded from JSON serialization.
- */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class JwtResponse {
-
     private String token;
     private String tokenType = "Bearer";
     private String userId;
     private String username;
     private String email;
+    private Boolean forcePasswordChange;
 
     public JwtResponse() {
     }
@@ -25,44 +21,16 @@ public class JwtResponse {
         this.email = email;
     }
 
-    public String getToken() {
-        return token;
-    }
-
-    public void setToken(String token) {
-        this.token = token;
-    }
-
-    public String getTokenType() {
-        return tokenType;
-    }
-
-    public void setTokenType(String tokenType) {
-        this.tokenType = tokenType;
-    }
-
-    public String getUserId() {
-        return userId;
-    }
-
-    public void setUserId(String userId) {
-        this.userId = userId;
-    }
-
-    public String getUsername() {
-        return username;
-    }
-
-    public void setUsername(String username) {
-        this.username = username;
-    }
-
-    public String getEmail() {
-        return email;
-    }
-
-    public void setEmail(String email) {
-        this.email = email;
-    }
+    public String getToken() { return token; }
+    public void setToken(String token) { this.token = token; }
+    public String getTokenType() { return tokenType; }
+    public void setTokenType(String tokenType) { this.tokenType = tokenType; }
+    public String getUserId() { return userId; }
+    public void setUserId(String userId) { this.userId = userId; }
+    public String getUsername() { return username; }
+    public void setUsername(String username) { this.username = username; }
+    public String getEmail() { return email; }
+    public void setEmail(String email) { this.email = email; }
+    public Boolean getForcePasswordChange() { return forcePasswordChange; }
+    public void setForcePasswordChange(Boolean forcePasswordChange) { this.forcePasswordChange = forcePasswordChange; }
 }
-

@@ -3,8 +3,11 @@ package com.elite4.anandan.registrationservices.service;
 import com.elite4.anandan.registrationservices.document.RegistrationDocument;
 import com.elite4.anandan.registrationservices.document.RoomOnBoardDocument;
 import com.elite4.anandan.registrationservices.dto.*;
+import com.elite4.anandan.registrationservices.model.EmployeeRole;
+import com.elite4.anandan.registrationservices.model.Role;
 import com.elite4.anandan.registrationservices.model.User;
 import com.elite4.anandan.registrationservices.repository.RegistrationRepository;
+import com.elite4.anandan.registrationservices.repository.RoleRepository;
 import com.elite4.anandan.registrationservices.repository.RoomsOrHouseRepository;
 import com.elite4.anandan.registrationservices.repository.UserRepository;
 import com.google.i18n.phonenumbers.NumberParseException;
@@ -12,13 +15,16 @@ import com.google.i18n.phonenumbers.PhoneNumberUtil;
 import com.google.i18n.phonenumbers.Phonenumber;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.retry.annotation.Backoff;
 import org.springframework.retry.annotation.Recover;
 import org.springframework.retry.annotation.Retryable;
+import java.time.Instant;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -31,6 +37,12 @@ public class RegistrationService {
     private final UserRepository userRepository;
     private final RoomsOrHouseRepository roomsOrHouseRepository;
     private final FileStorageService fileStorageService;
+    private final RoleRepository roleRepository;
+    private final PasswordEncoder passwordEncoder;
+    private final PhoneService phoneService;
+
+    @Value("${tenant.default-password:Tenant@123}")
+    private String defaultTenantPassword;
 
     public RegistrationWithRoomRequest create(Registration dto, RoomForRegistration room) {
         // Validate that coliveUserName is provided (required field)
@@ -280,6 +292,149 @@ public class RegistrationService {
         return result;
     }
 
+
+    private void ensureTenantUserAccount(RegistrationDocument doc) {
+        try {
+            Optional<User> existingUser = findExistingTenantUser(doc);
+            String roleId = getOrCreateUserRoleId();
+
+            if (existingUser.isPresent()) {
+                User user = existingUser.get();
+                if (roleId == null || user.getRoleIds() == null || !user.getRoleIds().contains(roleId)) {
+                    log.info("Existing user {} matched tenant onboarding but does not have ROLE_USER. Skipping user update.", user.getId());
+                    return;
+                }
+
+                boolean changed = false;
+                String latestEmail = blankToNull(doc.getEmail());
+                String latestPhoneRaw = blankToNull(doc.getContactNo());
+                String latestPhoneE164 = latestPhoneRaw != null ? phoneService.toE164(latestPhoneRaw) : null;
+                String latestAadharPath = blankToNull(doc.getAadharPhotoPath());
+
+                if (!Objects.equals(blankToNull(user.getEmail()), latestEmail)) {
+                    user.setEmail(latestEmail);
+                    changed = true;
+                }
+                if (!Objects.equals(blankToNull(user.getPhoneRaw()), latestPhoneRaw)) {
+                    user.setPhoneRaw(latestPhoneRaw);
+                    changed = true;
+                }
+                if (!Objects.equals(blankToNull(user.getPhoneE164()), latestPhoneE164)) {
+                    user.setPhoneE164(latestPhoneE164);
+                    changed = true;
+                }
+                if (!Objects.equals(blankToNull(user.getAadharPhotoPath()), latestAadharPath)) {
+                    user.setAadharPhotoPath(latestAadharPath);
+                    changed = true;
+                }
+                if (!user.isActive()) {
+                    user.setActive(true);
+                    changed = true;
+                }
+                if (changed) {
+                    user.setUpdatedAt(Instant.now());
+                    userRepository.save(user);
+                    log.info("Existing tenant user updated with latest registration data: {}", user.getId());
+                }
+                return;
+            }
+
+            User tenantUser = new User();
+            tenantUser.setUsername(buildTenantUsername(doc));
+            tenantUser.setPasswordHash(passwordEncoder.encode(defaultTenantPassword));
+            tenantUser.setEmail(blankToNull(doc.getEmail()));
+            tenantUser.setPhoneE164(phoneService.toE164(doc.getContactNo()));
+            tenantUser.setPhoneRaw(doc.getContactNo());
+            tenantUser.setAadharPhotoPath(doc.getAadharPhotoPath());
+            tenantUser.setActive(true);
+            tenantUser.setForcePasswordChange(true);
+            tenantUser.setCreatedAt(Instant.now());
+            tenantUser.setUpdatedAt(Instant.now());
+            if (roleId != null) {
+                tenantUser.setRoleIds(new HashSet<>(Collections.singleton(roleId)));
+            }
+            userRepository.save(tenantUser);
+            sendTenantCredentialsNotification(doc);
+            log.info("Tenant user account auto-created for registration: {}", doc.getId());
+        } catch (Exception e) {
+            log.error("Failed to auto-create tenant user account for registration {}: {}", doc.getId(), e.getMessage(), e);
+        }
+    }
+
+    private Optional<User> findExistingTenantUser(RegistrationDocument doc) {
+        if (doc.getEmail() != null && !doc.getEmail().isBlank()) {
+            Optional<User> userByEmail = userRepository.findByEmail(doc.getEmail().trim());
+            if (userByEmail.isPresent()) {
+                return userByEmail;
+            }
+        }
+        if (doc.getContactNo() != null && !doc.getContactNo().isBlank()) {
+            String e164 = phoneService.toE164(doc.getContactNo());
+            if (e164 != null && !e164.isBlank()) {
+                Optional<User> userByE164 = userRepository.findByPhoneE164(e164);
+                if (userByE164.isPresent()) {
+                    return userByE164;
+                }
+            }
+            Optional<User> userByRaw = userRepository.findByPhoneRaw(doc.getContactNo().trim());
+            if (userByRaw.isPresent()) {
+                return userByRaw;
+            }
+        }
+        return Optional.empty();
+    }
+
+    private String getOrCreateUserRoleId() {
+        return roleRepository.findByName(EmployeeRole.ROLE_USER)
+                .map(Role::getId)
+                .orElseGet(() -> {
+                    Role role = new Role();
+                    role.setName(EmployeeRole.ROLE_USER);
+                    return roleRepository.save(role).getId();
+                });
+    }
+
+    private String buildTenantUsername(RegistrationDocument doc) {
+        String base = (doc.getId() != null && !doc.getId().isBlank() ? doc.getId() : "tenant")
+                .replaceAll("[^a-zA-Z0-9_-]", "_")
+                .toLowerCase();
+        String candidate = base;
+        int counter = 1;
+        while (userRepository.findByUsername(candidate).isPresent()) {
+            candidate = base + "_" + counter++;
+        }
+        return candidate;
+    }
+
+    private String blankToNull(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return value.trim();
+    }
+
+    private void sendTenantCredentialsNotification(RegistrationDocument doc) {
+        String loginIdentifier = (doc.getEmail() != null && !doc.getEmail().isBlank()) ? doc.getEmail().trim() : doc.getContactNo();
+        String message = "Your CoLive Connect tenant account is ready. Login with " + loginIdentifier +
+                " and temporary password " + defaultTenantPassword +
+                ". You will be asked to change your password after first login.";
+
+        try {
+            if (doc.getEmail() != null && !doc.getEmail().isBlank()) {
+                notificationClient.sendEmail(doc.getEmail().trim(), "Your CoLive Connect login is ready", message);
+            }
+        } catch (Exception ex) {
+            log.warn("Failed to send tenant onboarding email for registration {}: {}", doc.getId(), ex.getMessage());
+        }
+
+        try {
+            if (doc.getContactNo() != null && !doc.getContactNo().isBlank()) {
+                notificationClient.sendSms(doc.getContactNo().trim(), message);
+            }
+        } catch (Exception ex) {
+            log.warn("Failed to send tenant onboarding SMS for registration {}: {}", doc.getId(), ex.getMessage());
+        }
+    }
     public Optional<RegistrationWithRoomRequest> update(String id, Registration dto, RoomForRegistration room, Boolean changingRoom) {
         return registrationRepository.findById(id)
                 .map(existing -> {
@@ -1018,6 +1173,10 @@ public class RegistrationService {
                 .orElseThrow(() -> new IllegalArgumentException("Registration not found: " + registrationId));
         }
     }
+
+
+
+
 
 
 

@@ -1,20 +1,20 @@
 package com.elite4.anandan.registrationservices.service;
 
+import com.elite4.anandan.registrationservices.dto.ChangePasswordRequest;
 import com.elite4.anandan.registrationservices.dto.JwtResponse;
 import com.elite4.anandan.registrationservices.dto.LoginRequest;
 import com.elite4.anandan.registrationservices.model.User;
 import com.elite4.anandan.registrationservices.repository.UserRepository;
 import com.elite4.anandan.registrationservices.security.JwtTokenProvider;
+import java.time.Instant;
+import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
-/**
- * Core login/authentication logic that validates credentials
- * and returns a JWT response.
- */
 @Service
 @Slf4j
 public class AuthService {
@@ -31,78 +31,89 @@ public class AuthService {
         this.jwtTokenProvider = jwtTokenProvider;
     }
 
-    /**
-     * Authenticates the user and returns a JWT response if successful.
-     * NOW supports login by: email OR phoneNumber
-     *
-     * @param request login payload (email or phoneNumber + password)
-     * @return 200 with JWT response, or 401 if credentials are invalid or account is not active
-     */
     public ResponseEntity<?> login(LoginRequest request) {
         try {
-            log.info("🔐 LOGIN ATTEMPT - Email: {}, Phone: {}", request.getEmail(), request.getPhoneNumber());
+            log.info("LOGIN ATTEMPT - Email: {}, Phone: {}", request.getEmail(), request.getPhoneNumber());
 
-            // Find user by email OR phoneNumber (not username)
             User user = null;
-
             if (request.getEmail() != null && !request.getEmail().isBlank()) {
-                // Login with email
-                log.debug("🔍 Looking up user by email: {}", request.getEmail());
                 user = userRepository.findByEmail(request.getEmail()).orElse(null);
                 if (user == null) {
-                    log.warn("❌ User not found with email: {}", request.getEmail());
                     return ResponseEntity.status(401).body("Invalid email or password");
                 }
-                log.info("✅ User found by email: {}", user.getUsername());
             } else if (request.getPhoneNumber() != null && !request.getPhoneNumber().isBlank()) {
-                // Login with phone number
-                log.debug("🔍 Looking up user by phone: {}", request.getPhoneNumber());
                 user = userRepository.findByPhoneE164(request.getPhoneNumber()).orElse(null);
                 if (user == null) {
-                    log.warn("❌ User not found with phone: {}", request.getPhoneNumber());
+                    user = userRepository.findByPhoneRaw(request.getPhoneNumber()).orElse(null);
+                }
+                if (user == null) {
                     return ResponseEntity.status(401).body("Invalid phone number or password");
                 }
-                log.info("✅ User found by phone: {}", user.getUsername());
             } else {
-                log.warn("⚠️ No email or phone number provided in login request");
                 return ResponseEntity.status(400).body("Email or phone number must be provided");
             }
 
-            // Validate password
             if (!passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
-                log.warn("❌ Invalid password for user: {}", user.getUsername());
                 return ResponseEntity.status(401).body("Invalid email/phone or password");
             }
-            log.info("✅ Password validated for user: {}", user.getUsername());
 
-            // Check if account is active
             if (!user.isActive()) {
-                log.warn("❌ Account inactive for user: {}", user.getUsername());
                 return ResponseEntity.status(403).body("Account is pending approval. Please contact administrator.");
             }
-            log.info("✅ Account is active for user: {}", user.getUsername());
 
-            // Generate JWT token using email or phone (not username)
-            String identifier = request.getEmail() != null ? request.getEmail() : request.getPhoneNumber();
-            log.debug("🔑 Generating JWT token for identifier: {}", identifier);
+            String identifier = request.getEmail() != null && !request.getEmail().isBlank()
+                    ? request.getEmail()
+                    : request.getPhoneNumber();
             String token = jwtTokenProvider.generateToken(identifier);
-            log.info("✅ JWT token generated successfully. Length: {} chars", token.length());
 
-            JwtResponse jwtResponse = new JwtResponse(
-                    token,
-                    user.getId(),
-                    user.getUsername(),
-                    user.getEmail()
-            );
+            user.setLastLoginAt(Instant.now());
+            user.setUpdatedAt(Instant.now());
+            userRepository.save(user);
 
-            log.info("✅ LOGIN SUCCESS - User: {}, ID: {}", user.getUsername(), user.getId());
+            JwtResponse jwtResponse = new JwtResponse(token, user.getId(), user.getUsername(), user.getEmail());
+            jwtResponse.setForcePasswordChange(user.isForcePasswordChange());
             return ResponseEntity.ok(jwtResponse);
-
         } catch (Exception e) {
-            log.error("❌ LOGIN FAILED - Exception: {}", e.getMessage(), e);
+            log.error("LOGIN FAILED - Exception: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body("An unexpected error occurred during login: " + e.getMessage());
         }
     }
-}
 
+    public ResponseEntity<?> changePassword(Authentication authentication, ChangePasswordRequest request) {
+        try {
+            if (authentication == null || authentication.getName() == null || authentication.getName().isBlank()) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Authentication required");
+            }
+
+            String identifier = authentication.getName();
+            Optional<User> userOpt = identifier.contains("@")
+                    ? userRepository.findByEmail(identifier)
+                    : userRepository.findByPhoneE164(identifier).or(() -> userRepository.findByPhoneRaw(identifier));
+
+            if (userOpt.isEmpty()) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body("User not found");
+            }
+
+            User user = userOpt.get();
+            if (!passwordEncoder.matches(request.getCurrentPassword(), user.getPasswordHash())) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Current password is incorrect");
+            }
+
+            if (request.getCurrentPassword().equals(request.getNewPassword())) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("New password must be different from current password");
+            }
+
+            user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
+            user.setForcePasswordChange(false);
+            user.setUpdatedAt(Instant.now());
+            userRepository.save(user);
+
+            return ResponseEntity.ok("Password changed successfully");
+        } catch (Exception e) {
+            log.error("CHANGE PASSWORD FAILED - Exception: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Failed to change password: " + e.getMessage());
+        }
+    }
+}

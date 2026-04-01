@@ -15,6 +15,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.security.core.Authentication;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -285,6 +286,13 @@ public class UserController {
         return authService.login(request);
     }
 
+    @PostMapping("/change-password")
+    @PreAuthorize("hasAnyRole('USER','ADMIN','MODERATOR')")
+    public ResponseEntity<?> changePassword(Authentication authentication, @Valid @RequestBody ChangePasswordRequest request) {
+        return authService.changePassword(authentication, request);
+    }
+
+
     /**
      * Get all users pending approval (inactive users).
      * Requires ADMIN or MODERATOR role.
@@ -403,3 +411,7 @@ public class UserController {
         return userCreationService.getLicenseDocumentsForCoLive(username, coliveName);
     }
 }
+
+
+
+
