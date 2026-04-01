@@ -66,6 +66,12 @@ public class User {
        CLIENT & ONBOARDING DETAILS
        ================================ */
     private Set<ClientAndRoomOnBoardId> clientDetails;
+
+    /* ================================
+       FILE UPLOADS & DOCUMENTS
+       ================================ */
+    private String aadharPhotoPath;
+
     /* ================================
        STATUS & AUDIT
        ================================ */
@@ -193,5 +199,13 @@ public class User {
 
     public void setLastLoginAt(Instant lastLoginAt) {
         this.lastLoginAt = lastLoginAt;
+    }
+
+    public String getAadharPhotoPath() {
+        return aadharPhotoPath;
+    }
+
+    public void setAadharPhotoPath(String aadharPhotoPath) {
+        this.aadharPhotoPath = aadharPhotoPath;
     }
 }

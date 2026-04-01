@@ -2,18 +2,24 @@ package com.elite4.anandan.registrationservices.controller;
 
 
 import com.elite4.anandan.registrationservices.dto.*;
+import com.elite4.anandan.registrationservices.model.User;
 import com.elite4.anandan.registrationservices.repository.UserRepository;
 import com.elite4.anandan.registrationservices.service.AdminService;
 import com.elite4.anandan.registrationservices.service.AuthService;
 import com.elite4.anandan.registrationservices.service.UserCreationService;
 import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.logging.log4j.util.Strings;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+
 /**
  * REST controller exposing auth-related APIs such as signup and login.
  */
@@ -37,119 +43,237 @@ public class UserController {
         this.adminService = adminService;
         this.userRepository = userRepository;
     }
-
     /**
-     * Signup API that checks username and email uniqueness before creating a user.
+     * Signup API with file uploads (user aadhar + property photos for each coLive)
+     * Supports multipart file uploads:
+     * - User aadhar photo
+     * - Property photos for each coLive (multiple files per coLive)
      *
-     * @param request user creation payload
-     * @return 201 with created user data, or 400 if username/email already exist
+     * @param request user creation request (JSON)
+     * @param userAadhar user aadhar photo (optional)
+     * @param fileMap property photos for each coLive (optional, format: colive1_property_1, colive1_property_2, etc.)
+     * @param licenseDocuments property document for each colive (optional,format: colive1_document,colive2_document,etc.)
+     * @return 201 with created user data including file paths
      */
-    @PostMapping("/signup")
-    public ResponseEntity<?> signup(@Valid @RequestBody UserCreateRequest request) {
+    @PostMapping("/signup-with-files")
+    public ResponseEntity<?> signupWithFiles(
+            @RequestParam String request,
+            @RequestParam(required = false) org.springframework.web.multipart.MultipartFile userAadhar,
+            @RequestParam(required = false) java.util.Map<String, org.springframework.web.multipart.MultipartFile> fileMap,
+            @RequestParam(required = false) Map<String, org.springframework.web.multipart.MultipartFile> licenseDocuments) throws java.io.IOException {
+
         try {
-            log.info("📝 SIGNUP REQUEST - Username: {}, Email: {}", request.getUsername(), request.getEmail());
-            log.debug("📝 SIGNUP REQUEST DETAILS - Phone: {}, Active: {}, ColiveDetails: {}",
-                    request.getPhoneNumber(), request.isActive(), request.getColiveDetails());
+            log.info("📝 SIGNUP WITH FILES REQUEST");
 
-            ResponseEntity<?> response = userCreationService.createUser(request);
+            // Parse JSON request
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            UserCreateRequest userCreateRequest = mapper.readValue(request, UserCreateRequest.class);
 
-            if (response.getStatusCode() == HttpStatus.CREATED) {
-                log.info("✅ SIGNUP SUCCESS - Username: {} created successfully", request.getUsername());
-            } else {
-                log.warn("⚠️ SIGNUP FAILED - Username: {}, Status: {}, Message: {}",
-                        request.getUsername(), response.getStatusCode(), response.getBody());
+            log.debug("📝 User aadhar file: {}", userAadhar != null ? userAadhar.getOriginalFilename() : "None");
+            log.debug("📝 Property photos count: {}", fileMap != null ? fileMap.size() : 0);
+            log.debug("📝 license documents count: {}", licenseDocuments != null ? licenseDocuments.size() : 0);
+
+
+            // Build maps for user aadhar and property photos per coLive
+            byte[] userAadharBytes = null;
+            java.util.Map<String, java.util.List<byte[]>> propertyPhotosMap = new java.util.HashMap<>();
+            java.util.Map<String, java.util.List<byte[]>> licenseDocumentsMap = new java.util.HashMap<>();
+
+            // Handle user aadhar
+            if (userAadhar != null && !userAadhar.isEmpty()) {
+                userAadharBytes = userAadhar.getBytes();
+                log.debug("📝 User aadhar file size: {} bytes", userAadharBytes.length);
             }
-            return response;
+
+            // Handle property photos for each coLive
+            if (fileMap != null && !fileMap.isEmpty()) {
+                // Get list of coLives from request
+                List<ColiveNameAndRooms> coLivesList = new java.util.ArrayList<>(userCreateRequest.getColiveDetails());
+
+                for (String key : fileMap.keySet()) {
+                    org.springframework.web.multipart.MultipartFile file = fileMap.get(key);
+                    if (file != null && !file.isEmpty()) {
+                        // Parse key format: property_X (e.g., "property_0", "property_1")
+                        if (key.contains("photo_")) {
+                            try {
+                                // Extract property index
+                                String[] parts = key.split("_");
+                                if (parts.length == 4) {
+                                    int propertyIndex = Integer.parseInt(parts[1]);
+
+                                    // Map property_X to coLive at index X
+                                    if (propertyIndex < coLivesList.size()) {
+                                        String coliveName = coLivesList.get(propertyIndex).getColiveName();
+                                        byte[] fileBytes = file.getBytes();
+
+                                        // Add to map with format: coliveName_0_photo_0
+                                        propertyPhotosMap.computeIfAbsent(coliveName, k -> new java.util.ArrayList<>())
+                                                .add(fileBytes);
+
+                                        log.debug("📝 Property file {} mapped to coLive {} (index {}): {} bytes",
+                                                key, coliveName, propertyIndex, fileBytes.length);
+                                    } else {
+                                        log.warn("📝 Property index {} out of range. Total coLives: {}", propertyIndex, coLivesList.size());
+                                    }
+                                }
+                            } catch (NumberFormatException e) {
+                                log.warn("📝 Invalid property index format in key {}: {}", key, e.getMessage());
+                            } catch (Exception e) {
+                                log.warn("📝 Failed to read file {}: {}", key, e.getMessage());
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Handle property documents for each coLive
+            if (licenseDocuments != null && !licenseDocuments.isEmpty()) {
+                // Get list of coLives from request
+                List<ColiveNameAndRooms> coLivesList = new java.util.ArrayList<>(userCreateRequest.getColiveDetails());
+
+                for (String key : fileMap.keySet()) {
+                    org.springframework.web.multipart.MultipartFile file = licenseDocuments.get(key);
+                    if (file != null && !file.isEmpty()) {
+                        // Parse key format: property_X (e.g., "license_0", "license_1")
+                        if (key.contains("license_")) {
+                            try {
+                                // Extract property index
+                                String[] parts = key.split("_");
+                                if (parts.length == 4) {
+                                    int propertyIndex = Integer.parseInt(parts[1]);
+
+                                    // Map property_X to coLive at index X
+                                    if (propertyIndex < coLivesList.size()) {
+                                        String coliveName = coLivesList.get(propertyIndex).getColiveName();
+                                        byte[] fileBytes = file.getBytes();
+
+                                        // Add to property photos map
+                                        licenseDocumentsMap.computeIfAbsent(coliveName, k -> new java.util.ArrayList<>())
+                                                .add(fileBytes);
+
+                                        log.debug("📝 Property file {} mapped to coLive {} (index {}): {} bytes",
+                                                key, coliveName, propertyIndex, fileBytes.length);
+                                    } else {
+                                        log.warn("📝 Property index {} out of range. Total coLives: {}", propertyIndex, coLivesList.size());
+                                    }
+                                }
+                            } catch (NumberFormatException e) {
+                                log.warn("📝 Invalid property index format in key {}: {}", key, e.getMessage());
+                            } catch (Exception e) {
+                                log.warn("📝 Failed to read file {}: {}", key, e.getMessage());
+                            }
+                        }
+                    }
+                }
+            }
+            return userCreationService.createUserWithFilesAndPhotos(userCreateRequest, userAadharBytes, propertyPhotosMap, licenseDocumentsMap);
         } catch (Exception e) {
-            log.error("❌ SIGNUP ERROR - Username: {}, Exception: {}", request.getUsername(), e.getMessage(), e);
+            log.error("❌ SIGNUP WITH FILES ERROR - Exception: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Signup failed: " + e.getMessage());
+                    .body(ErrorResponse.internalServerError(e.getMessage()));
         }
     }
 
     /**
-     * Add client to existing user
+     * Download user aadhar file for a specific user in signup
      */
-    @PostMapping("/addClientToUser")
-    @PreAuthorize("hasAnyRole('ADMIN','MODERATOR')")
-    public ResponseEntity<?> addColive(@Valid @RequestBody AddClientToUser request) {
+    @GetMapping("/download-user-aadhar/{userId}")
+    @PreAuthorize("hasAnyRole('USER','ADMIN','MODERATOR')")
+    public ResponseEntity<byte[]> downloadUserAadhar(@PathVariable String userId) {
         try {
-            log.info("🏢 ADD CLIENT REQUEST - Username: {}, ClientName: {}",
-                    request.getUsername(), request.getColiveName());
-            log.debug("🏢 ADD CLIENT DETAILS - Email: {}, Phone: {}, CategoryType: {}",
-                    request.getEmail(), request.getPhoneNumber(), request.getCategoryType());
-
-            ResponseEntity<?> response = userCreationService.addClientToExistUser(request);
-
-            if (response.getStatusCode().is2xxSuccessful()) {
-                log.info("✅ ADD CLIENT SUCCESS - Username: {}, ClientName: {} added",
-                        request.getUsername(), request.getColiveName());
-            } else {
-                log.warn("⚠️ ADD CLIENT FAILED - Username: {}, ClientName: {}, Status: {}, Message: {}",
-                        request.getUsername(), request.getColiveName(), response.getStatusCode(), response.getBody());
-            }
-
-            return response;
+            byte[] fileContent = userCreationService.downloadUserAadharForSignup(userId);
+            return ResponseEntity.ok()
+                    .header("Content-Type", "image/jpeg")
+                    .header("Content-Disposition", "attachment; filename=\"aadhar.jpg\"")
+                    .body(fileContent);
         } catch (Exception e) {
-            log.error("❌ ADD CLIENT ERROR - Username: {}, ClientName: {}, Exception: {}",
-                    request.getUsername(), request.getColiveName(), e.getMessage(), e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Add client failed: " + e.getMessage());
+            return ResponseEntity.notFound().build();
         }
     }
 
     /**
-     * Add client to existing user with file uploads
+     * Add client to existing user with file uploads (property photos for the coLive)
+     * Supports multipart file uploads:
+     * - Property photos for the coLive being added (multiple files allowed)
+     *
+     * Files are mapped to AddClientToUser attributes:
+     * - propertyPhotosPath: List of uploaded property photo paths
+     *
+     * @param request add client to user request (JSON)
+     * @param fileMap property photos for the coLive (optional, format: property_1, property_2, etc.)
+     * @return 200 with updated user data including file paths
      */
     @PostMapping("/addClientToUser-with-files")
     @PreAuthorize("hasAnyRole('ADMIN','MODERATOR')")
     public ResponseEntity<?> addClientWithFiles(
             @RequestParam String request,
-            @RequestParam(required = false) org.springframework.web.multipart.MultipartFile aadharPhoto,
-            @RequestParam(required = false) org.springframework.web.multipart.MultipartFile document) throws java.io.IOException {
+            @RequestParam(required = false) java.util.Map<String, org.springframework.web.multipart.MultipartFile> fileMap,
+            @RequestParam(required = false) Map<String, org.springframework.web.multipart.MultipartFile> licenseDocuments) throws java.io.IOException {
 
         try {
-            log.info("📸 ADD CLIENT WITH FILES REQUEST - Aadhar File: {}, Document File: {}",
-                    aadharPhoto != null ? aadharPhoto.getOriginalFilename() : "None",
-                    document != null ? document.getOriginalFilename() : "None");
-            log.debug("📸 ADD CLIENT FILES SIZE - Aadhar: {} bytes, Document: {} bytes",
-                    aadharPhoto != null ? aadharPhoto.getSize() : 0,
-                    document != null ? document.getSize() : 0);
+            log.info("🏢 ADD CLIENT WITH FILES REQUEST");
 
             // Parse JSON request
             com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
             AddClientToUser addClientRequest = mapper.readValue(request, AddClientToUser.class);
-            log.debug("📸 ADD CLIENT WITH FILES - Parsed Request: Username: {}, ClientName: {}",
-                    addClientRequest.getUsername(), addClientRequest.getColiveName());
 
-            // Build client files map from multipart files
-            java.util.Map<String, byte[]> clientFilesMap = new java.util.HashMap<>();
+            log.debug("🏢 Username: {}, CoLiveName: {}", addClientRequest.getUsername(), addClientRequest.getColiveName());
+            log.debug("🏢 Property photos count: {}", fileMap != null ? fileMap.size() : 0);
 
-            if (aadharPhoto != null && !aadharPhoto.isEmpty()) {
-                clientFilesMap.put("aadhar", aadharPhoto.getBytes());
-                log.debug("📸 Aadhar photo prepared for upload: {}", aadharPhoto.getOriginalFilename());
+            // Build list for property photos
+            java.util.List<byte[]> propertyPhotosMap = new java.util.ArrayList<>();
+            java.util.List<byte[]> licenseDocumentsMap = new java.util.ArrayList<>();
+            // Handle property photos for each coLive
+            if (fileMap != null && !fileMap.isEmpty()) {
+                for (String key : fileMap.keySet()) {
+                    org.springframework.web.multipart.MultipartFile file = fileMap.get(key);
+                    if (file != null && !file.isEmpty()) {
+                        // Parse key format: property_X (e.g., "property_0", "property_1")
+                        if (key.contains("photo_")) {
+                            try {
+                                byte[] fileBytes = file.getBytes();
+                                        // Add to map with format: coliveName_0_photo_0
+                                propertyPhotosMap.add(fileBytes);
+                                log.debug("📝 Property file {} mapped to coLive {} : {} bytes",
+                                                key, addClientRequest.getColiveName(), fileBytes.length);
+                            } catch (NumberFormatException e) {
+                                log.warn("📝 Invalid property index format in key {}: {}", key, e.getMessage());
+                            } catch (Exception e) {
+                                log.warn("📝 Failed to read file {}: {}", key, e.getMessage());
+                            }
+                        }
+                    }
+                }
             }
 
-            if (document != null && !document.isEmpty()) {
-                clientFilesMap.put("document", document.getBytes());
-                log.debug("📸 Document prepared for upload: {}", document.getOriginalFilename());
+            // Handle property documents for each coLive
+            if (licenseDocuments != null && !licenseDocuments.isEmpty()) {
+                for (String key : fileMap.keySet()) {
+                    org.springframework.web.multipart.MultipartFile file = licenseDocuments.get(key);
+                    if (file != null && !file.isEmpty()) {
+                        // Parse key format: property_X (e.g., "license_0", "license_1")
+                        if (key.contains("license_")) {
+                            try {
+                                        byte[] fileBytes = file.getBytes();
+                                        // Add to property photos map
+                                        licenseDocumentsMap.add(fileBytes);
+                                        log.debug("📝 Property file {} mapped to coLive {}: {} bytes",
+                                                key, addClientRequest.getColiveName(), fileBytes.length);
+                            } catch (NumberFormatException e) {
+                                log.warn("📝 Invalid property index format in key {}: {}", key, e.getMessage());
+                            } catch (Exception e) {
+                                log.warn("📝 Failed to read file {}: {}", key, e.getMessage());
+                            }
+                        }
+                    }
+                }
             }
 
-            ResponseEntity<?> response = userCreationService.addClientToUserWithFiles(addClientRequest, clientFilesMap);
-
-            if (response.getStatusCode().is2xxSuccessful()) {
-                log.info("✅ ADD CLIENT WITH FILES SUCCESS - Username: {}, ClientName: {}, Files uploaded",
-                        addClientRequest.getUsername(), addClientRequest.getColiveName());
-            } else {
-                log.warn("⚠️ ADD CLIENT WITH FILES FAILED - Username: {}, Status: {}",
-                        addClientRequest.getUsername(), response.getStatusCode());
-            }
-
-            return response;
+            return userCreationService.addClientToUserWithFilesAndPhotos(addClientRequest, propertyPhotosMap,licenseDocumentsMap);
         } catch (Exception e) {
             log.error("❌ ADD CLIENT WITH FILES ERROR - Exception: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Add client with files failed: " + e.getMessage());
+                    .body(ErrorResponse.internalServerError(e.getMessage()));
         }
     }
 
@@ -158,203 +282,124 @@ public class UserController {
      */
     @PostMapping("/login")
     public ResponseEntity<?> login(@Valid @RequestBody LoginRequest request) {
-        try {
-            log.info("🔐 LOGIN REQUEST - Email: {}, Phone: {}", request.getEmail(), request.getPhoneNumber());
-
-            ResponseEntity<?> response = authService.login(request);
-
-            if (response.getStatusCode() == HttpStatus.OK) {
-                Object body = response.getBody();
-                if (body instanceof JwtResponse) {
-                    JwtResponse jwtResponse = (JwtResponse) body;
-                    log.info("✅ LOGIN SUCCESS - User: {}, Token Generated", jwtResponse.getUsername());
-                    log.debug("✅ LOGIN TOKEN DETAILS - UserId: {}, Email: {}",
-                            jwtResponse.getUserId(), jwtResponse.getEmail());
-                }
-            } else {
-                log.warn("⚠️ LOGIN FAILED - Email: {}, Status: {}, Message: {}",
-                        request.getEmail(), response.getStatusCode(), response.getBody());
-            }
-
-            return response;
-        } catch (Exception e) {
-            log.error("❌ LOGIN ERROR - Email: {}, Exception: {}", request.getEmail(), e.getMessage(), e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Login failed: " + e.getMessage());
-        }
+        return authService.login(request);
     }
 
     /**
      * Get all users pending approval (inactive users).
+     * Requires ADMIN or MODERATOR role.
      */
     @GetMapping("/admin/pending-approvals")
     @PreAuthorize("hasAnyRole('ADMIN','MODERATOR')")
     public ResponseEntity<List<UserResponse>> getPendingApprovals() {
-        try {
-            log.info("📋 GET PENDING APPROVALS REQUEST");
-
-            List<UserResponse> response = adminService.getPendingApprovals();
-
-            log.info("✅ GET PENDING APPROVALS SUCCESS - Found {} pending users", response.size());
-            log.debug("📋 Pending users: {}", response.stream()
-                    .map(UserResponse::getUsername)
-                    .toList());
-
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            log.error("❌ GET PENDING APPROVALS ERROR - Exception: {}", e.getMessage(), e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
-        }
+        return ResponseEntity.ok(adminService.getPendingApprovals());
     }
 
     /**
      * Get all active users.
+     * Requires ADMIN or MODERATOR role.
      */
     @GetMapping("/admin/active-users")
     @PreAuthorize("hasAnyRole('ADMIN','MODERATOR')")
     public ResponseEntity<List<UserResponse>> getActiveUsers() {
-        try {
-            log.info("📋 GET ACTIVE USERS REQUEST");
-
-            List<UserResponse> response = adminService.getActiveUsers();
-
-            log.info("✅ GET ACTIVE USERS SUCCESS - Found {} active users", response.size());
-            log.debug("📋 Active users: {}", response.stream()
-                    .map(UserResponse::getUsername)
-                    .toList());
-
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            log.error("❌ GET ACTIVE USERS ERROR - Exception: {}", e.getMessage(), e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
-        }
+        return ResponseEntity.ok(adminService.getActiveUsers());
     }
 
     /**
      * Approve a user registration.
+     * Requires ADMIN or MODERATOR role.
      */
     @PostMapping("/admin/approve/{username}")
     @PreAuthorize("hasAnyRole('ADMIN','MODERATOR')")
     public ResponseEntity<?> approveUser(@PathVariable String username) {
-        try {
-            log.info("✔️ APPROVE USER REQUEST - Username: {}", username);
-
-            ResponseEntity<?> response = adminService.approveUser(username);
-
-            if (response.getStatusCode().is2xxSuccessful()) {
-                log.info("✅ APPROVE USER SUCCESS - Username: {} approved", username);
-            } else {
-                log.warn("⚠️ APPROVE USER FAILED - Username: {}, Status: {}, Message: {}",
-                        username, response.getStatusCode(), response.getBody());
-            }
-
-            return response;
-        } catch (Exception e) {
-            log.error("❌ APPROVE USER ERROR - Username: {}, Exception: {}", username, e.getMessage(), e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Approve user failed: " + e.getMessage());
-        }
+        return adminService.approveUser(username);
     }
 
     /**
      * Reject a user registration (delete inactive user).
+     * Requires ADMIN or MODERATOR role.
      */
     @DeleteMapping("/admin/reject/{username}")
     @PreAuthorize("hasAnyRole('ADMIN','MODERATOR')")
     public ResponseEntity<?> rejectUser(@PathVariable String username) {
-        try {
-            log.info("❌ REJECT USER REQUEST - Username: {}", username);
-
-            ResponseEntity<?> response = adminService.rejectUser(username);
-
-            if (response.getStatusCode().is2xxSuccessful()) {
-                log.info("✅ REJECT USER SUCCESS - Username: {} rejected", username);
-            } else {
-                log.warn("⚠️ REJECT USER FAILED - Username: {}, Status: {}", username, response.getStatusCode());
-            }
-
-            return response;
-        } catch (Exception e) {
-            log.error("❌ REJECT USER ERROR - Username: {}, Exception: {}", username, e.getMessage(), e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Reject user failed: " + e.getMessage());
-        }
+        return adminService.rejectUser(username);
     }
 
     /**
      * Deactivate an active user.
+     * Requires ADMIN or MODERATOR role.
      */
     @PostMapping("/admin/deactivate/{username}")
     @PreAuthorize("hasAnyRole('ADMIN','MODERATOR')")
     public ResponseEntity<?> deactivateUser(@PathVariable String username) {
-        try {
-            log.info("⏸️ DEACTIVATE USER REQUEST - Username: {}", username);
-
-            ResponseEntity<?> response = adminService.deactivateUser(username);
-
-            if (response.getStatusCode().is2xxSuccessful()) {
-                log.info("✅ DEACTIVATE USER SUCCESS - Username: {} deactivated", username);
-            } else {
-                log.warn("⚠️ DEACTIVATE USER FAILED - Username: {}, Status: {}", username, response.getStatusCode());
-            }
-
-            return response;
-        } catch (Exception e) {
-            log.error("❌ DEACTIVATE USER ERROR - Username: {}, Exception: {}", username, e.getMessage(), e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Deactivate user failed: " + e.getMessage());
-        }
+        return adminService.deactivateUser(username);
     }
 
     /**
      * Get user details by username.
+     * Requires ADMIN or MODERATOR role.
      */
     @GetMapping("/admin/user/{username}")
     @PreAuthorize("hasAnyRole('USER','ADMIN','MODERATOR')")
     public ResponseEntity<?> getUserByUsername(@PathVariable String username) {
-        try {
-            log.info("👤 GET USER BY USERNAME REQUEST - Username: {}", username);
+        UserResponse userResponse = adminService.getUserClientsWithOutRooms(username);
+        return ResponseEntity.ok(userResponse);
+    }
 
-            UserResponse userResponse = adminService.getUserWithRoles(username);
+    /**
+     * Get user details by username and colive name.
+     * Requires ADMIN or MODERATOR role.
+     */
 
-            if (userResponse != null) {
-                log.info("✅ GET USER SUCCESS - Username: {}, Email: {}, Active: {}",
-                        userResponse.getUsername(), userResponse.getEmail(), userResponse.isActive());
-                log.debug("👤 USER DETAILS - ID: {}, RoleIds: {}, Phones: {}",
-                        userResponse.getId(), userResponse.getRoleIds(), userResponse.getPhoneNumber());
-            } else {
-                log.warn("⚠️ GET USER NOT FOUND - Username: {}", username);
-                return ResponseEntity.notFound().build();
-            }
+    @GetMapping("/admin/user/{username}/colive/{coLiveName}")
+    @PreAuthorize("hasAnyRole('USER','ADMIN','MODERATOR')")
+    public ResponseEntity<?> getUserByUsername(@PathVariable String username,@PathVariable String coLiveName) {
+        ColiveNameAndRooms userResponse = adminService.getUserClientsWithRoomsAndUploadedPhotosAndAttachments(username,coLiveName);
+        return ResponseEntity.ok(userResponse);
+    }
 
-            return ResponseEntity.ok(userResponse);
-        } catch (Exception e) {
-            log.error("❌ GET USER ERROR - Username: {}, Exception: {}", username, e.getMessage(), e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Get user failed: " + e.getMessage());
-        }
+    /**
+     * Get user details by username.
+     * Requires ADMIN or MODERATOR role.
+     */
+    @GetMapping("/admin/userWithClientAndRooms/{username}")
+    @PreAuthorize("hasAnyRole('USER','ADMIN','MODERATOR')")
+    public ResponseEntity<?> getUserByUsernameWithRooms(@PathVariable String username) {
+        UserResponse userResponse = adminService.getUserWithRoles(username);
+        return ResponseEntity.ok(userResponse);
     }
 
     /**
      * Search users by username with wildcard support.
+     * Requires ADMIN or MODERATOR role.
      */
     @GetMapping("/admin/search/{username}")
     @PreAuthorize("hasAnyRole('ADMIN','MODERATOR')")
     public ResponseEntity<List<UserResponse>> searchUsers(@PathVariable String username) {
-        try {
-            log.info("🔍 SEARCH USERS REQUEST - Search Term: {}", username);
+        return ResponseEntity.ok(adminService.getUserWithWildCard(username));
+    }
 
-            List<UserResponse> response = adminService.getUserWithWildCard(username);
+    /**
+     * Get all uploaded photos for a user's specific coLive
+     * Requires USER, ADMIN or MODERATOR role.
+     */
+    @GetMapping("/user/{username}/coLive/{coliveName}/photos")
+    @PreAuthorize("hasAnyRole('USER','ADMIN','MODERATOR')")
+    public ResponseEntity<?> getUploadedPhotosForCoLive(
+            @PathVariable String username,
+            @PathVariable String coliveName) {
+        return userCreationService.getUploadedPhotosForCoLive(username, coliveName);
+    }
 
-            log.info("✅ SEARCH USERS SUCCESS - Found {} users matching: {}", response.size(), username);
-            log.debug("🔍 Search results: {}", response.stream()
-                    .map(UserResponse::getUsername)
-                    .toList());
-
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            log.error("❌ SEARCH USERS ERROR - Search Term: {}, Exception: {}", username, e.getMessage(), e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
-        }
+    /**
+     * Get all license documents for a user's specific coLive
+     * Requires USER, ADMIN or MODERATOR role.
+     */
+    @GetMapping("/user/{username}/coLive/{coliveName}/documents")
+    @PreAuthorize("hasAnyRole('USER','ADMIN','MODERATOR')")
+    public ResponseEntity<?> getLicenseDocumentsForCoLive(
+            @PathVariable String username,
+            @PathVariable String coliveName) {
+        return userCreationService.getLicenseDocumentsForCoLive(username, coliveName);
     }
 }

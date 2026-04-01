@@ -9,6 +9,7 @@ import java.util.Objects;
 public class Room {
     private RoomType roomType;
     private String roomNumber;
+    private int roomCapacity;
     private String houseNumber;
     private HouseType houseType;
     private roomOccupied occupied = roomOccupied.NOT_OCCUPIED;

@@ -9,6 +9,7 @@ public class RoomForRegistration {
     private RoomType roomType;
     private String roomNumber;
     private String houseNumber;
+    private int roomCapacity;
     private HouseType houseType;
 
     @Override

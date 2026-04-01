@@ -38,4 +38,6 @@ public class UserCreateRequest {
 
     private boolean active;
 
+    private String aadharPhotoPath;
+
 }

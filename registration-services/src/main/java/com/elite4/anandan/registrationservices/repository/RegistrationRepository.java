@@ -44,4 +44,10 @@ public interface RegistrationRepository extends MongoRepository<RegistrationDocu
             String coliveName,
             String houseNumber,
             Registration.roomOccupied occupied);
+
+    // Query to get all registrations for a house (for house availability calculation)
+    List<RegistrationDocument> findByColiveNameAndColiveUserNameAndRoomForRegistrationHouseNumber(
+            String coliveName,
+            String coliveUserName,
+            String houseNumber);
 }

@@ -33,7 +33,7 @@ public class RegistrationService {
     private final FileStorageService fileStorageService;
 
     public RegistrationWithRoomRequest create(Registration dto, RoomForRegistration room) {
-        // Validate that clientUserName is provided (required field)
+        // Validate that coliveUserName is provided (required field)
         if (dto.getColiveUserName() == null || dto.getColiveUserName().trim().isEmpty()) {
             throw new IllegalArgumentException("Client username must be provided for registration");
         }
@@ -53,13 +53,13 @@ public class RegistrationService {
             );
         }
 
-        // Validate that fname, clientName, and contactNo combination doesn't already exist
+        // Validate that fname, coliveName, and contactNo combination doesn't already exist
         List<RegistrationDocument> existingRegistrations = registrationRepository
                 .findByFnameAndColiveNameAndContactNo(dto.getFname(), dto.getColiveName(), dto.getContactNo());
         if (!existingRegistrations.isEmpty()) {
             throw new IllegalArgumentException(
                     "Registration already exists with fname '" + dto.getFname() +
-                            "', clientName '" + dto.getColiveName() +
+                            "', coliveName '" + dto.getColiveName() +
                             "', and contactNo '" + dto.getContactNo() + "'"
             );
         }
@@ -84,7 +84,7 @@ public class RegistrationService {
                 throw new IllegalArgumentException("Either room number or house number must be provided");
             }
 
-            // Validate that clientUsername exists in UserRepository
+            // Validate that coliveUserName exists in UserRepository
             Optional<User> clientUser = userRepository.findByUsername(dto.getColiveUserName());
             if (clientUser.isEmpty()) {
                 throw new IllegalArgumentException(
@@ -364,10 +364,10 @@ public class RegistrationService {
         return registrationRepository.findAll().stream().map(this::toDto).collect(Collectors.toList());
     }
 
-    public List<RegistrationWithRoomRequest> findAllByRoomNumber(String clientUserName, String clientName, String roomNumber) {
+    public List<RegistrationWithRoomRequest> findAllByRoomNumber(String coliveUserName, String coliveName, String roomNumber) {
         return registrationRepository.findByColiveNameAndColiveUserNameAndRoomForRegistrationRoomNumberAndOccupied(
-                        clientName,
-                        clientUserName,
+                        coliveName,
+                        coliveUserName,
                         roomNumber,
                         Registration.roomOccupied.OCCUPIED).stream()
                 .filter(doc -> doc.getCheckOutDate() == null || doc.getCheckOutDate().toString().isBlank())
@@ -375,19 +375,19 @@ public class RegistrationService {
                 .collect(Collectors.toList());
     }
 
-    public List<RegistrationWithRoomRequest> findAllByHouseNumber(String clientUserName, String clientName, String roomNumber) {
-        return registrationRepository.findByColiveUserNameAndColiveNameAndRoomForRegistrationHouseNumberAndOccupied(clientUserName, clientName, roomNumber, Registration.roomOccupied.OCCUPIED).stream()
+    public List<RegistrationWithRoomRequest> findAllByHouseNumber(String coliveUserName, String coliveName, String roomNumber) {
+        return registrationRepository.findByColiveUserNameAndColiveNameAndRoomForRegistrationHouseNumberAndOccupied(coliveUserName, coliveName, roomNumber, Registration.roomOccupied.OCCUPIED).stream()
                 .filter(doc -> doc.getCheckOutDate() == null || doc.getCheckOutDate().toString().isBlank())
                 .map(this::toDto)
                 .collect(Collectors.toList());
     }
 
-    public List<RegistrationWithRoomRequest> findAllByRoomType(String clientUserName, String clientName, String roomType) {
-        return registrationRepository.findAllByColiveUserNameAndColiveNameAndRoomForRegistrationRoomType(clientUserName, clientName, roomType).stream().map(this::toDto).collect(Collectors.toList());
+    public List<RegistrationWithRoomRequest> findAllByRoomType(String coliveUserName, String coliveName, String roomType) {
+        return registrationRepository.findAllByColiveUserNameAndColiveNameAndRoomForRegistrationRoomType(coliveUserName, coliveName, roomType).stream().map(this::toDto).collect(Collectors.toList());
     }
 
-    public List<RegistrationWithRoomRequest> findAllByHouseType(String clientUserName, String clientName, String houseType) {
-        return registrationRepository.findAllByColiveUserNameAndColiveNameAndRoomForRegistrationHouseType(clientUserName, clientName, houseType).stream().map(this::toDto).collect(Collectors.toList());
+    public List<RegistrationWithRoomRequest> findAllByHouseType(String coliveUserName, String coliveName, String houseType) {
+        return registrationRepository.findAllByColiveUserNameAndColiveNameAndRoomForRegistrationHouseType(coliveUserName, coliveName, houseType).stream().map(this::toDto).collect(Collectors.toList());
     }
 
     public List<RegistrationWithRoomRequest> findAllByGender(Registration.Gender gender) {
@@ -505,7 +505,7 @@ public class RegistrationService {
         }
 
         boolean roomUpdated = false;
-        String clientUserName = registrationDoc.getColiveUserName();
+        String coliveUserName = registrationDoc.getColiveUserName();
         RoomForRegistration checkedOutRoom = registrationDoc.getRoomForRegistration();
 
         for (Room room : rooms) {
@@ -514,7 +514,7 @@ public class RegistrationService {
             }
 
             // Count remaining occupied registrations for this room
-            int occupiedCount = countOccupiedRegistrations(clientUserName, clientDetail.getClientCategory(), room);
+            int occupiedCount = countOccupiedRegistrations(coliveUserName, clientDetail.getClientCategory(), room);
 
             // Update room occupancy status
             if (occupiedCount > 0) {
@@ -552,20 +552,20 @@ public class RegistrationService {
     /**
      * Counts occupied registrations for a specific room based on client category.
      *
-     * @param clientUserName the client user name
+     * @param coliveUserName the client user name
      * @param clientCategory the client category (PG, HOSTEL, etc.)
      * @param room           the room to check
      * @return count of occupied registrations
      */
-    private int countOccupiedRegistrations(String clientUserName, String clientCategory, Room room) {
+    private int countOccupiedRegistrations(String coliveUserName, String clientCategory, Room room) {
         List<RegistrationDocument> registrations;
 
         if (clientCategory != null && (clientCategory.equals("PG") || clientCategory.equals("HOSTEL"))) {
             registrations = registrationRepository.findByColiveNameAndColiveUserNameAndRoomForRegistrationRoomNumberAndOccupied(
-                    clientUserName, clientUserName, room.getRoomNumber(), Registration.roomOccupied.OCCUPIED);
+                    coliveUserName, coliveUserName, room.getRoomNumber(), Registration.roomOccupied.OCCUPIED);
         } else {
             registrations = registrationRepository.findByColiveUserNameAndColiveNameAndRoomForRegistrationHouseNumberAndOccupied(
-                    clientUserName, clientUserName, room.getHouseNumber(), Registration.roomOccupied.OCCUPIED);
+                    coliveUserName, coliveUserName, room.getHouseNumber(), Registration.roomOccupied.OCCUPIED);
         }
 
         return registrations.size();

@@ -40,48 +40,53 @@ public class AuthService {
      */
     public ResponseEntity<?> login(LoginRequest request) {
         try {
-            log.info("Login attempt with email: {}, phone: {}", request.getEmail(), request.getPhoneNumber());
+            log.info("🔐 LOGIN ATTEMPT - Email: {}, Phone: {}", request.getEmail(), request.getPhoneNumber());
 
             // Find user by email OR phoneNumber (not username)
             User user = null;
 
             if (request.getEmail() != null && !request.getEmail().isBlank()) {
                 // Login with email
-                log.debug("Looking up user by email: {}", request.getEmail());
+                log.debug("🔍 Looking up user by email: {}", request.getEmail());
                 user = userRepository.findByEmail(request.getEmail()).orElse(null);
                 if (user == null) {
-                    log.warn("User not found with email: {}", request.getEmail());
+                    log.warn("❌ User not found with email: {}", request.getEmail());
                     return ResponseEntity.status(401).body("Invalid email or password");
                 }
+                log.info("✅ User found by email: {}", user.getUsername());
             } else if (request.getPhoneNumber() != null && !request.getPhoneNumber().isBlank()) {
                 // Login with phone number
-                log.debug("Looking up user by phone: {}", request.getPhoneNumber());
-                user = userRepository.findByPhoneRaw(request.getPhoneNumber()).orElse(null);
+                log.debug("🔍 Looking up user by phone: {}", request.getPhoneNumber());
+                user = userRepository.findByPhoneE164(request.getPhoneNumber()).orElse(null);
                 if (user == null) {
-                    log.warn("User not found with phone: {}", request.getPhoneNumber());
+                    log.warn("❌ User not found with phone: {}", request.getPhoneNumber());
                     return ResponseEntity.status(401).body("Invalid phone number or password");
                 }
+                log.info("✅ User found by phone: {}", user.getUsername());
             } else {
-                log.warn("No email or phone number provided in login request");
+                log.warn("⚠️ No email or phone number provided in login request");
                 return ResponseEntity.status(400).body("Email or phone number must be provided");
             }
 
             // Validate password
             if (!passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
-                log.warn("Invalid password for user: {}", user.getUsername());
+                log.warn("❌ Invalid password for user: {}", user.getUsername());
                 return ResponseEntity.status(401).body("Invalid email/phone or password");
             }
+            log.info("✅ Password validated for user: {}", user.getUsername());
 
             // Check if account is active
             if (!user.isActive()) {
-                log.warn("Account inactive for user: {}", user.getUsername());
+                log.warn("❌ Account inactive for user: {}", user.getUsername());
                 return ResponseEntity.status(403).body("Account is pending approval. Please contact administrator.");
             }
+            log.info("✅ Account is active for user: {}", user.getUsername());
 
             // Generate JWT token using email or phone (not username)
             String identifier = request.getEmail() != null ? request.getEmail() : request.getPhoneNumber();
-            log.debug("Generating JWT token for: {}", identifier);
+            log.debug("🔑 Generating JWT token for identifier: {}", identifier);
             String token = jwtTokenProvider.generateToken(identifier);
+            log.info("✅ JWT token generated successfully. Length: {} chars", token.length());
 
             JwtResponse jwtResponse = new JwtResponse(
                     token,
@@ -90,11 +95,11 @@ public class AuthService {
                     user.getEmail()
             );
 
-            log.info("Login successful for user: {}", user.getUsername());
+            log.info("✅ LOGIN SUCCESS - User: {}, ID: {}", user.getUsername(), user.getId());
             return ResponseEntity.ok(jwtResponse);
 
         } catch (Exception e) {
-            log.error("Login failed with exception: {}", e.getMessage(), e);
+            log.error("❌ LOGIN FAILED - Exception: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body("An unexpected error occurred during login: " + e.getMessage());
         }

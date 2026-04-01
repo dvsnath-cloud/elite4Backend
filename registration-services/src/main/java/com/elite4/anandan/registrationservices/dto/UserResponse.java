@@ -18,13 +18,14 @@ public class UserResponse {
     private String email;
     private Set<String> roleIds;
     private boolean active;
+    private String phoneNumber;
+    private String aadharPhotoPath;
     @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", timezone = "UTC")
     private Instant createdAt;
     @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", timezone = "UTC")
     private Instant updatedAt;
     @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", timezone = "UTC")
     private Instant lastLoginAt;
-    private String phoneNumber;
     private Set<ColiveNameAndRooms> coliveNameAndRooms;
     private List<String> roleNames;
 
@@ -114,5 +115,13 @@ public class UserResponse {
 
     public void setRoleNames(List<String> roleNames) {
         this.roleNames = roleNames;
+    }
+
+    public String getAadharPhotoPath() {
+        return aadharPhotoPath;
+    }
+
+    public void setAadharPhotoPath(String aadharPhotoPath) {
+        this.aadharPhotoPath = aadharPhotoPath;
     }
 }

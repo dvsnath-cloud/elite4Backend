@@ -18,10 +18,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.nio.charset.StandardCharsets;
-import java.util.HashSet;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
+import java.util.*;
 
 /**
  * Core logic for creating users, including validation, password encoding,
@@ -55,7 +52,7 @@ public class UserCreationService {
      * @return 201 with created user data, or 400 if username/email/roles are invalid
      */
     @SuppressWarnings("rawtypes")
-    public ResponseEntity createUser(UserCreateRequest request) {
+    public ResponseEntity createUser(UserCreateRequest request,java.util.Map<String, java.util.List<byte[]>> propertyPhotosMap,java.util.Map<String, java.util.List<byte[]>> licenseDocumentsMap) {
         Set<ClientAndRoomOnBoardId> clientAndRoomOnBoardIdsSet = new HashSet<>();
 
         try {
@@ -147,21 +144,52 @@ public class UserCreationService {
 
                     }
                     clientAndRoomOnBoardId.setColiveName(clientName.getColiveName());
+                    //clientAndRoomOnBoardId.setUploadedPhotos();
                     clientAndRoomOnBoardId.setClientCategory(String.valueOf(clientName.getCategoryType()));
                     clientAndRoomOnBoardId.setBankDetails(clientName.getBankDetails());
-
-                    // Set file paths from ColiveNameAndRooms
-                    if (clientName.getAadharPhotoPath() != null && !clientName.getAadharPhotoPath().isBlank()) {
-                        clientAndRoomOnBoardId.setAadharPhotoPath(clientName.getAadharPhotoPath());
-                        log.info("Aadhar photo path set for client: {}", clientName.getColiveName());
+                    // Step 3: Upload property photos for each coLive and save to DB
+                    if (propertyPhotosMap != null && !propertyPhotosMap.isEmpty()) {
+                        java.util.List<byte[]> photosList = propertyPhotosMap.get(clientName.getColiveName());
+                        java.util.List<String> uploadedPaths = new java.util.ArrayList<>();
+                        for (int i = 0; i < photosList.size(); i++) {
+                            byte[] photoBytes = photosList.get(i);
+                            if (photoBytes != null && photoBytes.length > 0) {
+                                try {
+                                    String fileName = fileStorageService.generateFileName(
+                                            clientName.getColiveName() + "_photo_" + (i + 1),
+                                            ".jpg",
+                                            "property_photos");
+                                    String photoPath = fileStorageService.uploadFile(fileName, photoBytes, "image/jpeg");
+                                    uploadedPaths.add(photoPath);
+                                    log.info("✅ Property photo {} uploaded for {}: {}", (i + 1), clientName.getColiveName(), photoPath);
+                                } catch (Exception e) {
+                                    log.error("❌ Failed to upload property photo {} for {}: {}", (i + 1), clientName.getColiveName(), e.getMessage(), e);
+                                }
+                            }
+                        }
+                        clientAndRoomOnBoardId.setUploadedPhotos(uploadedPaths);
                     }
-                    if (clientName.getDocumentUploadPath() != null && !clientName.getDocumentUploadPath().isBlank()) {
-                        clientAndRoomOnBoardId.setDocumentUploadPath(clientName.getDocumentUploadPath());
-                        clientAndRoomOnBoardId.setDocumentType(clientName.getDocumentType());
-                        clientAndRoomOnBoardId.setDocumentNumber(clientName.getDocumentNumber());
-                        log.info("Document path set for client: {}", clientName.getColiveName());
+                    if (licenseDocumentsMap != null && !licenseDocumentsMap.isEmpty()) {
+                         java.util.List<byte[]> docsList = licenseDocumentsMap.get(clientName.getColiveName());;
+                        java.util.List<String> licenseUploadedPaths = new java.util.ArrayList<>();
+                        for (int i = 0; i < docsList.size(); i++) {
+                            byte[] docBytes = docsList.get(i);
+                            if (docBytes != null && docBytes.length > 0) {
+                                try {
+                                    String fileName = fileStorageService.generateFileName(
+                                            clientName.getColiveName() + "_license_" + (i + 1),
+                                            ".pdf",
+                                            "property_license");
+                                    String docPath = fileStorageService.uploadFile(fileName, docBytes, "application/pdf");
+                                    licenseUploadedPaths.add(docPath);
+                                    log.info("✅ Property photo {} uploaded for {}: {}", (i + 1), clientName.getColiveName(), docPath);
+                                } catch (Exception e) {
+                                    log.error("❌ Failed to upload property photo {} for {}: {}", (i + 1), clientName.getColiveName(), e.getMessage(), e);
+                                }
+                            }
+                        }
+                        clientAndRoomOnBoardId.setLicenseDocumentsPath(licenseUploadedPaths);
                     }
-
                     clientAndRoomOnBoardIdsSet.add(clientAndRoomOnBoardId);
                 }
             }
@@ -208,7 +236,7 @@ public class UserCreationService {
     }
 
     @SuppressWarnings("rawtypes")
-    public ResponseEntity addClientToExistUser(AddClientToUser request) {
+    public ResponseEntity addClientToExistUser(AddClientToUser request,List<byte[]> propertyPhotos, List<byte[]> licenseDocuments) {
         Set<ClientAndRoomOnBoardId> clientAndRoomOnBoardIdsSet = new HashSet<>();
         Optional<User> existingUserByUsername = userRepository.findByUsername(request.getUsername());
         if (existingUserByUsername.isPresent()) {
@@ -297,23 +325,62 @@ public class UserCreationService {
         clientAndRoomOnBoardId.setColiveName(request.getColiveName());
         clientAndRoomOnBoardId.setClientCategory(String.valueOf(request.getCategoryType()));
         clientAndRoomOnBoardId.setBankDetails(request.getBankDetails());
-
-        // Set file attributes from AddClientToUser request
-        if (request.getAadharPhotoPath() != null && !request.getAadharPhotoPath().isBlank()) {
-            clientAndRoomOnBoardId.setAadharPhotoPath(request.getAadharPhotoPath());
-            log.info("Aadhar photo path set for client: {}", request.getColiveName());
-        }
-        if (request.getDocumentUploadPath() != null && !request.getDocumentUploadPath().isBlank()) {
-            clientAndRoomOnBoardId.setDocumentUploadPath(request.getDocumentUploadPath());
-            if (request.getDocumentType() != null) {
-                clientAndRoomOnBoardId.setDocumentType(request.getDocumentType());
+        // Step 2: Upload property photos if provided
+        java.util.List<String> uploadedPaths = new java.util.ArrayList<>();
+        if (propertyPhotos != null && !propertyPhotos.isEmpty()) {
+            for (int i = 0; i < propertyPhotos.size(); i++) {
+                byte[] photoBytes = propertyPhotos.get(i);
+                if (photoBytes != null && photoBytes.length > 0) {
+                    try {
+                        String fileName = fileStorageService.generateFileName(
+                                 request.getColiveName() + "_property_" + (i + 1),
+                                ".jpg",
+                                "property_photos");
+                        String photoPath = fileStorageService.uploadFile(fileName, photoBytes, "image/jpeg");
+                        uploadedPaths.add(photoPath);
+                        log.info("✅ Property photo {} uploaded for coLive {}: {}", (i + 1), request.getColiveName(), photoPath);
+                    } catch (Exception e) {
+                        log.error("❌ Failed to upload property photo {} for {}: {}", (i + 1), request.getColiveName(), e.getMessage());
+                    }
+                }
             }
-            if (request.getDocumentNumber() != null) {
-                clientAndRoomOnBoardId.setDocumentNumber(request.getDocumentNumber());
-            }
-            log.info("Document path set for client: {}", request.getColiveName());
-        }
 
+            if (!uploadedPaths.isEmpty()) {
+                log.info("✅ {} property photos uploaded for coLive: {}", uploadedPaths.size(), request.getColiveName());
+            }
+            log.info("✅ ADD CLIENT WITH PROPERTY PHOTOS SUCCESS - Client: {}", request.getColiveName());
+                clientAndRoomOnBoardId.setUploadedPhotos(uploadedPaths);
+        } else {
+            log.info("ℹ️ No property photos provided for coLive: {}", request.getColiveName());
+        }
+        // Step 2: Upload license documents if provided
+        java.util.List<String> uploadedDocPaths = new java.util.ArrayList<>();
+        if (licenseDocuments != null && !licenseDocuments.isEmpty()) {
+            for (int i = 0; i < licenseDocuments.size(); i++) {
+                byte[] docBytes = licenseDocuments.get(i);
+                if (docBytes != null && docBytes.length > 0) {
+                    try {
+                        String fileName = fileStorageService.generateFileName(
+                                request.getColiveName() + "_license_" + (i + 1),
+                                ".pdf",
+                                "property_license");
+                        String docPath = fileStorageService.uploadFile(fileName, docBytes, "application/pdf");
+                        uploadedDocPaths.add(docPath);
+                        log.info("✅ License document {} uploaded for coLive {}: {}", (i + 1), request.getColiveName(), docPath);
+                    } catch (Exception e) {
+                        log.error("❌ Failed to upload license document {} for {}: {}", (i + 1), request.getColiveName(), e.getMessage());
+                    }
+                }
+            }
+
+            if (!uploadedDocPaths.isEmpty()) {
+                log.info("✅ {} license documents uploaded for coLive: {}", uploadedDocPaths.size(), request.getColiveName());
+            }
+            log.info("✅ ADD CLIENT WITH LICENSE DOCUMENTS SUCCESS - Client: {}", request.getColiveName());
+            clientAndRoomOnBoardId.setLicenseDocumentsPath(uploadedDocPaths);
+        } else {
+            log.info("ℹ️ No license documents provided for coLive: {}", request.getColiveName());
+        }
         clientAndRoomOnBoardIdsSet.add(clientAndRoomOnBoardId);
 
         // Find user and add client
@@ -341,77 +408,6 @@ public class UserCreationService {
                     return ResponseEntity.ok(toUserResponse(saved));
                 })
                 .orElse(ResponseEntity.notFound().build());
-    }
-
-    /**
-     * Add client to existing user with file uploads (aadhar photo and document)
-     * Handles AddClientToUser file attributes:
-     * - aadharPhotoPath: Aadhar photo for the client
-     * - documentUploadPath: Document (like registration certificate)
-     * - documentType: Type of document
-     * - documentNumber: Document number
-     *
-     * Uses FileStorageService methods: uploadFile, generateFileName
-     *
-     * @param request add client to user payload
-     * @param clientFilesMap Map of fileType -> fileBytes
-     *        Example: {"aadhar" -> bytes, "document" -> bytes}
-     * @return 200 with updated user data including file paths
-     */
-    @SuppressWarnings("rawtypes")
-    public ResponseEntity addClientToUserWithFiles(AddClientToUser request,
-                                                    Map<String, byte[]> clientFilesMap) {
-        log.info("Starting add client with file upload for user: {}", request.getUsername());
-
-        // Step 1: Get the user ID first
-        Optional<User> userOpt = userRepository.findByUsername(request.getUsername());
-        if (!userOpt.isPresent()) {
-            return ResponseEntity.badRequest().body("User with username '" + request.getUsername() + "' not found");
-        }
-
-        String userId = userOpt.get().getId();
-        String coLiveName = request.getColiveName();
-
-        // Step 2: Upload files if provided
-        if (clientFilesMap != null && !clientFilesMap.isEmpty()) {
-            // Upload aadhar photo for client
-            if (clientFilesMap.containsKey("aadhar") && clientFilesMap.get("aadhar") != null && clientFilesMap.get("aadhar").length > 0) {
-                try {
-                    byte[] aadharBytes = clientFilesMap.get("aadhar");
-                    String fileName = fileStorageService.generateFileName(userId + "_" + coLiveName, "aadhar.jpg", "client_aadhar");
-                    log.info("Generated aadhar filename: {}", fileName);
-
-                    String aadharPath = fileStorageService.uploadFile(fileName, aadharBytes, "image/jpeg");
-                    log.info("Aadhar photo uploaded for client {} at: {}", coLiveName, aadharPath);
-
-                    request.setAadharPhotoPath(aadharPath);
-                } catch (Exception e) {
-                    log.error("Failed to upload aadhar for client {}: {}", coLiveName, e.getMessage(), e);
-                }
-            }
-
-            // Upload document for client
-            if (clientFilesMap.containsKey("document") && clientFilesMap.get("document") != null && clientFilesMap.get("document").length > 0) {
-                try {
-                    byte[] docBytes = clientFilesMap.get("document");
-                    String fileName = fileStorageService.generateFileName(userId + "_" + coLiveName, "document.pdf", "client_document");
-                    log.info("Generated document filename: {}", fileName);
-
-                    String docPath = fileStorageService.uploadFile(fileName, docBytes, "application/pdf");
-                    log.info("Document uploaded for client {} at: {}", coLiveName, docPath);
-
-                    request.setDocumentUploadPath(docPath);
-                } catch (Exception e) {
-                    log.error("Failed to upload document for client {}: {}", coLiveName, e.getMessage(), e);
-                }
-            }
-        }
-
-        // Step 3: Add client with file paths (if set)
-        ResponseEntity<?> addClientResponse = addClientToExistUser(request);
-
-        log.info("Add client with files completed for userId: {}, clientName: {}", userId, coLiveName);
-        return addClientResponse;
     }
 
 
@@ -490,7 +486,7 @@ public class UserCreationService {
                 .orElse(ResponseEntity.notFound().build());
     }
 
-    /**
+   /*
      * Creates a new user with file uploads for each client
      * Handles ColiveNameAndRooms file attributes:
      * - aadharPhotoPath: Aadhar photo for the client
@@ -511,7 +507,8 @@ public class UserCreationService {
         log.info("Starting user creation with client files for username: {}", request.getUsername());
 
         // Step 1: Create user first (existing logic)
-        ResponseEntity<?> createResponse = createUser(request);
+        // Call createUser with empty maps since files are handled separately
+        ResponseEntity<?> createResponse = createUser(request, new java.util.HashMap<>(), new java.util.HashMap<>());
 
         // If creation failed, return the error
         if (!createResponse.getStatusCode().is2xxSuccessful()) {
@@ -628,6 +625,38 @@ public class UserCreationService {
             log.warn("Failed to save {} file path for client {}: {}", fileType, clientName, e.getMessage());
         }
     }
+
+    /**Dowload client file aadharphoto for a specific user
+     * Uses FileStorageService.downloadFile()
+     *
+     * @param userId User ID
+     * @return File content as byte array
+     */
+
+    public byte[] downloadUserAadharForSignup(String userId) {
+        try {
+            Optional<User> userOpt = userRepository.findById(userId);
+            if (userOpt.isPresent()) {
+                User user = userOpt.get();
+                String aadharPath = user.getAadharPhotoPath();
+
+                if (aadharPath == null || aadharPath.isBlank()) {
+                    throw new IllegalArgumentException("No aadhar photo found for user: " + userId);
+                }
+
+                // downloadFile() - Retrieve from storage
+                byte[] content = fileStorageService.downloadFile(aadharPath);
+                log.info("User aadhar photo downloaded for userId: {}, size: {} bytes", userId, content.length);
+                return content;
+            }
+            throw new IllegalArgumentException("User not found: " + userId);
+        } catch (Exception e) {
+            log.error("Failed to download aadhar for user {}: {}", userId, e.getMessage());
+            throw new RuntimeException("Failed to download file: " + e.getMessage());
+        }
+    }
+
+
 
     /**
      * Downloads client file (aadhar or document) for a specific client
@@ -899,7 +928,562 @@ public class UserCreationService {
                 });
     }
 
+    /**
+     * Create user with file uploads (user aadhar + property photos for each coLive)
+     *
+     * @param request user creation payload
+     * @param userAadharBytes user aadhar photo (optional)
+     * @param propertyPhotosMap property photos for each coLive (optional)
+     *        Format: Map<coliveName, List<photoBytes>>
+     * @return 201 with created user data including file paths
+     */
+    @SuppressWarnings("rawtypes")
+    public ResponseEntity createUserWithFilesAndPhotos(UserCreateRequest request,
+                                                        byte[] userAadharBytes,
+                                                        java.util.Map<String, java.util.List<byte[]>> propertyPhotosMap,
+                                                        java.util.Map<String, java.util.List<byte[]>> licenseDocumentsMap) {
+        try {
+            log.info("📸 SIGNUP WITH FILES AND PHOTOS - Username: {}, Has aadhar: {}, CoLives with photos: {}",
+                    request.getUsername(), userAadharBytes != null, propertyPhotosMap.size());
+
+            // Step 1: Create user normally
+            ResponseEntity<?> userResponse = createUser(request, propertyPhotosMap, licenseDocumentsMap);
+
+            if (!userResponse.getStatusCode().is2xxSuccessful()) {
+                log.warn("❌ SIGNUP WITH FILES - User creation failed");
+                return userResponse;
+            }
+
+            UserResponse createdUser = (UserResponse) userResponse.getBody();
+            String userId = createdUser.getId();
+            log.info("✅ User created: {}, ID: {}", createdUser.getUsername(), userId);
+
+            // Step 2: Upload user aadhar if provided
+            String userAadharPath = null;
+            if (userAadharBytes != null && userAadharBytes.length > 0) {
+                try {
+                    String fileName = fileStorageService.generateFileName(userId, "aadhar.jpg", "user_aadhar");
+                    userAadharPath = fileStorageService.uploadFile(fileName, userAadharBytes, "image/jpeg");
+                    log.info("✅ User aadhar uploaded: {}", userAadharPath);
+                } catch (Exception e) {
+                    log.error("❌ Failed to upload user aadhar: {}", e.getMessage(), e);
+                }
+            }
+
+            // Step 4: Save file paths to repository
+            updateUserWithFilePaths(userId, userAadharPath);
+
+            log.info("✅ SIGNUP WITH FILES AND PHOTOS SUCCESS - User: {}", createdUser.getUsername());
+            return userResponse;
+
+        } catch (Exception e) {
+            log.error("❌ SIGNUP WITH FILES AND PHOTOS ERROR - Exception: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(ErrorResponse.internalServerError(e.getMessage()));
+        }
+    }
+
+    /**
+     * Update user with file paths (aadhar and property photos)
+     * Saves paths to user document in database
+     *
+     * @param userId User ID
+     * @param userAadharPath User aadhar photo path
+     */
+    private void updateUserWithFilePaths(String userId, String userAadharPath) {
+        try {
+            Optional<User> userOpt = userRepository.findById(userId);
+            if (userOpt.isPresent()) {
+                User user = userOpt.get();
+                boolean updated = false;
+
+                // Save user aadhar path
+                if (userAadharPath != null && !userAadharPath.isBlank()) {
+                    user.setAadharPhotoPath(userAadharPath);
+                    updated = true;
+                    log.info("✅ User aadhar path saved to repository: {}", userAadharPath);
+                }
+
+                // Save user if any updates were made
+                if (updated) {
+                    user.setUpdatedAt(java.time.Instant.now());
+                    userRepository.save(user);
+                    log.info("✅ User document updated and saved with file paths");
+                }
+            }
+        } catch (Exception e) {
+            log.error("❌ Failed to save file paths to repository: {}", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Add client to existing user with property photos
+     *
+     * @param request add client to user payload
+     * @param propertyPhotos list of property photo bytes (optional)
+     * @return 200 with updated user data including property photo paths
+     */
+    @SuppressWarnings("rawtypes")
+    public ResponseEntity addClientToUserWithFilesAndPhotos(AddClientToUser request,
+                                                            List<byte[]> propertyPhotos, List<byte[]> licenseDocuments) {
+        try {
+            log.info("🏢 ADD CLIENT WITH PROPERTY PHOTOS - Username: {}, CoLiveName: {}, Photos: {}",
+                    request.getUsername(), request.getColiveName(), propertyPhotos != null ? propertyPhotos.size() : 0);
+
+            // Step 1: Add client normally
+            ResponseEntity<?> addClientResponse = addClientToExistUser(request ,propertyPhotos, licenseDocuments);
+
+            if (!addClientResponse.getStatusCode().is2xxSuccessful()) {
+                log.warn("❌ ADD CLIENT WITH PHOTOS - Client addition failed");
+                return addClientResponse;
+            }
+
+            UserResponse updatedUser = (UserResponse) addClientResponse.getBody();
+            String userId = updatedUser.getId();
+            String coliveName = request.getColiveName();
+            log.info("✅ Client added: {}, User ID: {}", coliveName, userId);
+
+            return addClientResponse;
+
+        } catch (Exception e) {
+            log.error("❌ ADD CLIENT WITH PROPERTY PHOTOS ERROR - Exception: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(ErrorResponse.internalServerError(e.getMessage()));
+        }
+    }
+
+    /**
+     * Update client with property photo paths
+     * Saves property photo paths to specific client details in user document
+     *
+     * @param userId User ID
+     * @param coliveName CoLive name
+     * @param photoPaths List of property photo paths
+     */
+    private void updateClientPropertyPhotoPaths(String userId, String coliveName,
+                                                 java.util.List<String> photoPaths) {
+        try {
+            Optional<User> userOpt = userRepository.findById(userId);
+            if (userOpt.isPresent()) {
+                User user = userOpt.get();
+                Set<ClientAndRoomOnBoardId> clientDetails = user.getClientDetails();
+
+                if (clientDetails != null) {
+                    for (ClientAndRoomOnBoardId client : clientDetails) {
+                        if (client.getColiveName().equals(coliveName)) {
+                            client.setUploadedPhotos(photoPaths);
+                            log.info("✅ Property photo paths set for client: {}", coliveName);
+                            break;
+                        }
+                    }
+
+                    user.setUpdatedAt(java.time.Instant.now());
+                    userRepository.save(user);
+                    log.info("✅ Client property photo paths saved to repository: {} paths for {}", photoPaths.size(), coliveName);
+                }
+            }
+        } catch (Exception e) {
+            log.error("❌ Failed to save property photo paths for client {}: {}", coliveName, e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Download an uploaded photo by file path
+     * @param filePath the path of the photo file
+     * @return ResponseEntity with the file content
+     */
+    public ResponseEntity<?> downloadUploadedPhoto(String filePath) {
+        try {
+            if (filePath == null || filePath.trim().isEmpty()) {
+                log.warn("❌ File path is required for download");
+                return ResponseEntity.badRequest().body(ErrorResponse.badRequest("INVALID_PATH", "File path is required"));
+            }
+
+            if (!fileStorageService.fileExists(filePath)) {
+                log.warn("❌ File not found at path: {}", filePath);
+                return ResponseEntity.notFound().build();
+            }
+
+            byte[] fileContent = fileStorageService.downloadFile(filePath);
+
+            // Extract filename from path for content disposition
+            String filename = extractFilenameFromPath(filePath);
+
+            log.info("✅ Photo downloaded successfully: {}", filePath);
+            return ResponseEntity.ok()
+                    .header("Content-Disposition", "attachment; filename=\"" + filename + "\"")
+                    .header("Content-Type", "image/jpeg")
+                    .body(fileContent);
+        } catch (Exception e) {
+            log.error("❌ Error downloading photo from path {}: {}", filePath, e.getMessage(), e);
+            return ResponseEntity.status(500).body(ErrorResponse.internalServerError("Failed to download photo: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * Download a license document by file path
+     * @param filePath the path of the license document file
+     * @return ResponseEntity with the file content
+     */
+    public ResponseEntity<?> downloadLicenseDocument(String filePath) {
+        try {
+            if (filePath == null || filePath.trim().isEmpty()) {
+                log.warn("❌ File path is required for download");
+                return ResponseEntity.badRequest().body(ErrorResponse.badRequest("INVALID_PATH", "File path is required"));
+            }
+
+            if (!fileStorageService.fileExists(filePath)) {
+                log.warn("❌ File not found at path: {}", filePath);
+                return ResponseEntity.notFound().build();
+            }
+
+            byte[] fileContent = fileStorageService.downloadFile(filePath);
+
+            // Extract filename from path for content disposition
+            String filename = extractFilenameFromPath(filePath);
+
+            log.info("✅ License document downloaded successfully: {}", filePath);
+            return ResponseEntity.ok()
+                    .header("Content-Disposition", "attachment; filename=\"" + filename + "\"")
+                    .header("Content-Type", "application/pdf")
+                    .body(fileContent);
+        } catch (Exception e) {
+            log.error("❌ Error downloading license document from path {}: {}", filePath, e.getMessage(), e);
+            return ResponseEntity.status(500).body(ErrorResponse.internalServerError("Failed to download document: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * Delete an uploaded photo by file path and update user record
+     * @param username the username of the owner
+     * @param coliveName the coLive name associated with the photo
+     * @param filePath the path of the photo file to delete
+     * @return ResponseEntity with success/error message
+     */
+    public ResponseEntity<?> deleteUploadedPhoto(String username, String coliveName, String filePath) {
+        try {
+            if (filePath == null || filePath.trim().isEmpty()) {
+                log.warn("❌ File path is required for deletion");
+                return ResponseEntity.badRequest().body(ErrorResponse.badRequest("INVALID_PATH", "File path is required"));
+            }
+
+            if (!fileStorageService.fileExists(filePath)) {
+                log.warn("❌ File not found at path: {}", filePath);
+                return ResponseEntity.badRequest().body(ErrorResponse.notFound("File not found"));
+            }
+
+            // Get user and remove photo from their clientDetails
+            Optional<User> userOpt = userRepository.findByUsername(username);
+            if (userOpt.isEmpty()) {
+                log.warn("❌ User not found: {}", username);
+                return ResponseEntity.badRequest().body(ErrorResponse.notFound("User not found"));
+            }
+
+            User user = userOpt.get();
+            Set<ClientAndRoomOnBoardId> clientDetails = user.getClientDetails();
+
+            if (clientDetails != null) {
+                for (ClientAndRoomOnBoardId client : clientDetails) {
+                    if (client.getColiveName().equals(coliveName)) {
+                        List<String> uploadedPhotos = client.getUploadedPhotos();
+                        if (uploadedPhotos != null && uploadedPhotos.remove(filePath)) {
+                            // Delete the file from storage
+                            fileStorageService.deleteFile(filePath);
+
+                            // Update timestamp and save user
+                            user.setUpdatedAt(java.time.Instant.now());
+                            userRepository.save(user);
+
+                            log.info("✅ Photo deleted successfully for user {} from coLive {}: {}", username, coliveName, filePath);
+                            return ResponseEntity.ok("Photo deleted successfully");
+                        }
+                    }
+                }
+            }
+
+            log.warn("❌ Photo not found in user's records for user {} and coLive {}", username, coliveName);
+            return ResponseEntity.badRequest().body(ErrorResponse.notFound("Photo not found in user's records"));
+        } catch (Exception e) {
+            log.error("❌ Error deleting photo for user {}: {}", username, e.getMessage(), e);
+            return ResponseEntity.status(500).body(ErrorResponse.internalServerError("Failed to delete photo: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * Delete a license document by file path and update user record
+     * @param username the username of the owner
+     * @param coliveName the coLive name associated with the document
+     * @param filePath the path of the document file to delete
+     * @return ResponseEntity with success/error message
+     */
+    public ResponseEntity<?> deleteLicenseDocument(String username, String coliveName, String filePath) {
+        try {
+            if (filePath == null || filePath.trim().isEmpty()) {
+                log.warn("❌ File path is required for deletion");
+                return ResponseEntity.badRequest().body(ErrorResponse.badRequest("INVALID_PATH", "File path is required"));
+            }
+
+            if (!fileStorageService.fileExists(filePath)) {
+                log.warn("❌ File not found at path: {}", filePath);
+                return ResponseEntity.badRequest().body(ErrorResponse.notFound("File not found"));
+            }
+
+            // Get user and remove document from their clientDetails
+            Optional<User> userOpt = userRepository.findByUsername(username);
+            if (userOpt.isEmpty()) {
+                log.warn("❌ User not found: {}", username);
+                return ResponseEntity.badRequest().body(ErrorResponse.notFound("User not found"));
+            }
+
+            User user = userOpt.get();
+            Set<ClientAndRoomOnBoardId> clientDetails = user.getClientDetails();
+
+            if (clientDetails != null) {
+                for (ClientAndRoomOnBoardId client : clientDetails) {
+                    if (client.getColiveName().equals(coliveName)) {
+                        List<String> licenseDocuments = client.getLicenseDocumentsPath();
+                        if (licenseDocuments != null && licenseDocuments.remove(filePath)) {
+                            // Delete the file from storage
+                            fileStorageService.deleteFile(filePath);
+
+                            // Update timestamp and save user
+                            user.setUpdatedAt(java.time.Instant.now());
+                            userRepository.save(user);
+
+                            log.info("✅ License document deleted successfully for user {} from coLive {}: {}", username, coliveName, filePath);
+                            return ResponseEntity.ok("License document deleted successfully");
+                        }
+                    }
+                }
+            }
+
+            log.warn("❌ License document not found in user's records for user {} and coLive {}", username, coliveName);
+            return ResponseEntity.badRequest().body(ErrorResponse.notFound("License document not found in user's records"));
+        } catch (Exception e) {
+            log.error("❌ Error deleting license document for user {}: {}", username, e.getMessage(), e);
+            return ResponseEntity.status(500).body(ErrorResponse.internalServerError("Failed to delete document: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * Extract filename from file path (handles both Windows and Unix paths)
+     * @param filePath the full file path
+     * @return the filename
+     */
+    private String extractFilenameFromPath(String filePath) {
+        if (filePath == null) {
+            return "file";
+        }
+
+        // Handle Windows and Unix paths
+        int lastSeparator = Math.max(filePath.lastIndexOf('\\'), filePath.lastIndexOf('/'));
+        if (lastSeparator != -1) {
+            return filePath.substring(lastSeparator + 1);
+        }
+        return filePath;
+    }
+
+    /**
+     * Extract file extension from filename
+     * @param fileName the filename
+     * @return the file extension (e.g., "jpg", "pdf") or empty string if no extension
+     */
+    private String getFileExtension(String fileName) {
+        if (fileName == null || fileName.isEmpty()) {
+            return "";
+        }
+        int lastDot = fileName.lastIndexOf('.');
+        if (lastDot > 0 && lastDot < fileName.length() - 1) {
+            return fileName.substring(lastDot + 1).toLowerCase();
+        }
+        return "";
+    }
+
+    /**
+     * Get all uploaded photos for a user's specific coLive
+     * @param username the username of the property owner
+     * @param coliveName the name of the coLive
+     * Get all uploaded photos with file content for a user's specific coLive
+     * @param username the username of the property owner
+     * @param coliveName the name of the coLive
+     * @return ResponseEntity with list of photo file details including content
+     */
+    public ResponseEntity<?> getUploadedPhotosForCoLive(String username, String coliveName) {
+        try {
+            if (username == null || username.trim().isEmpty()) {
+                log.warn("❌ Username is required");
+                return ResponseEntity.badRequest().body(ErrorResponse.badRequest("INVALID_USERNAME", "Username is required"));
+            }
+
+            if (coliveName == null || coliveName.trim().isEmpty()) {
+                log.warn("❌ CoLive name is required");
+                return ResponseEntity.badRequest().body(ErrorResponse.badRequest("INVALID_COLIVE", "CoLive name is required"));
+            }
+
+            Optional<User> userOpt = userRepository.findByUsername(username);
+            if (userOpt.isEmpty()) {
+                log.warn("❌ User not found: {}", username);
+                ResponseEntity.badRequest().body(ErrorResponse.notFound("User not found"));
+            }
+
+            User user = userOpt.get();
+            Set<ClientAndRoomOnBoardId> clientDetails = user.getClientDetails();
+
+            if (clientDetails == null || clientDetails.isEmpty()) {
+                log.warn("❌ No coLives found for user: {}", username);
+                return ResponseEntity.badRequest().body(ErrorResponse.notFound("No coLives found for this user"));
+            }
+
+            for (ClientAndRoomOnBoardId client : clientDetails) {
+                if (client.getColiveName().equalsIgnoreCase(coliveName)) {
+                    List<String> uploadedPhotos = client.getUploadedPhotos();
+                    if (uploadedPhotos == null || uploadedPhotos.isEmpty()) {
+                        log.info("✅ No photos found for coLive: {}", coliveName);
+                        return ResponseEntity.ok(new java.util.ArrayList<>());
+                    }
+
+                    // Fetch file content and build file details list
+                    List<FileDetails> photoDetailsList = new java.util.ArrayList<>();
+                    for (String filePath : uploadedPhotos) {
+                        try {
+                            if (fileStorageService.fileExists(filePath)) {
+                                byte[] fileContent = fileStorageService.downloadFile(filePath);
+                                String fileName = extractFilenameFromPath(filePath);
+                                String fileExtension = getFileExtension(fileName);
+
+                                FileDetails fileDetails = FileDetails.builder()
+                                        .fileName(fileName)
+                                        .filePath(filePath)
+                                        .fileSize((long) fileContent.length)
+                                        .fileType("image/jpeg")
+                                        .fileExtension(fileExtension)
+                                        .fileContent(fileContent)
+                                        .exists(true)
+                                        .createdAt(java.time.Instant.now())
+                                        .description("Property photo for coLive: " + coliveName)
+                                        .build();
+
+                                photoDetailsList.add(fileDetails);
+                                log.info("✅ Loaded photo: {} ({} bytes)", fileName, fileContent.length);
+                            } else {
+                                log.warn("⚠️ Photo file not found: {}", filePath);
+                                // Still add to list but mark as not existing
+                                FileDetails fileDetails = FileDetails.builder()
+                                        .filePath(filePath)
+                                        .fileName(extractFilenameFromPath(filePath))
+                                        .exists(false)
+                                        .description("Property photo for coLive: " + coliveName)
+                                        .build();
+                                photoDetailsList.add(fileDetails);
+                            }
+                        } catch (Exception e) {
+                            log.error("❌ Error loading photo {}: {}", filePath, e.getMessage());
+                        }
+                    }
+
+                    log.info("✅ Retrieved {} photos for coLive: {}", photoDetailsList.size(), coliveName);
+                    return ResponseEntity.ok(photoDetailsList);
+                }
+            }
+
+            log.warn("❌ CoLive not found for user {}: {}", username, coliveName);
+            return ResponseEntity.badRequest().body(ErrorResponse.notFound("CoLive '" + coliveName + "' not found for this user"));
+        } catch (Exception e) {
+            log.error("❌ Error retrieving photos for user {} and coLive {}: {}", username, coliveName, e.getMessage(), e);
+            return ResponseEntity.status(500).body(ErrorResponse.internalServerError("Failed to retrieve photos: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * Get all license documents with file content for a user's specific coLive
+     * @param username the username of the property owner
+     * @param coliveName the name of the coLive
+     * @return ResponseEntity with list of document file details including content
+     */
+    public ResponseEntity<?> getLicenseDocumentsForCoLive(String username, String coliveName) {
+        try {
+            if (username == null || username.trim().isEmpty()) {
+                log.warn("❌ Username is required");
+                return ResponseEntity.badRequest().body(ErrorResponse.badRequest("INVALID_USERNAME", "Username is required"));
+            }
+
+            if (coliveName == null || coliveName.trim().isEmpty()) {
+                log.warn("❌ CoLive name is required");
+                return ResponseEntity.badRequest().body(ErrorResponse.badRequest("INVALID_COLIVE", "CoLive name is required"));
+            }
+
+            Optional<User> userOpt = userRepository.findByUsername(username);
+            if (userOpt.isEmpty()) {
+                log.warn("❌ User not found: {}", username);
+                return ResponseEntity.badRequest().body(ErrorResponse.notFound("User not found"));
+            }
+
+            User user = userOpt.get();
+            Set<ClientAndRoomOnBoardId> clientDetails = user.getClientDetails();
+
+            if (clientDetails == null || clientDetails.isEmpty()) {
+                log.warn("❌ No coLives found for user: {}", username);
+                return ResponseEntity.badRequest().body(ErrorResponse.notFound("No coLives found for this user"));
+            }
+
+            for (ClientAndRoomOnBoardId client : clientDetails) {
+                if (client.getColiveName().equalsIgnoreCase(coliveName)) {
+                    List<String> licenseDocuments = client.getLicenseDocumentsPath();
+                    if (licenseDocuments == null || licenseDocuments.isEmpty()) {
+                        log.info("✅ No documents found for coLive: {}", coliveName);
+                        return ResponseEntity.ok(new java.util.ArrayList<>());
+                    }
+
+                    // Fetch file content and build file details list
+                    List<FileDetails> documentDetailsList = new java.util.ArrayList<>();
+                    for (String filePath : licenseDocuments) {
+                        try {
+                            if (fileStorageService.fileExists(filePath)) {
+                                byte[] fileContent = fileStorageService.downloadFile(filePath);
+                                String fileName = extractFilenameFromPath(filePath);
+                                String fileExtension = getFileExtension(fileName);
+
+                                FileDetails fileDetails = FileDetails.builder()
+                                        .fileName(fileName)
+                                        .filePath(filePath)
+                                        .fileSize((long) fileContent.length)
+                                        .fileType("application/pdf")
+                                        .fileExtension(fileExtension)
+                                        .fileContent(fileContent)
+                                        .exists(true)
+                                        .createdAt(java.time.Instant.now())
+                                        .description("License document for coLive: " + coliveName)
+                                        .build();
+
+                                documentDetailsList.add(fileDetails);
+                                log.info("✅ Loaded document: {} ({} bytes)", fileName, fileContent.length);
+                            } else {
+                                log.warn("⚠️ Document file not found: {}", filePath);
+                                // Still add to list but mark as not existing
+                                FileDetails fileDetails = FileDetails.builder()
+                                        .filePath(filePath)
+                                        .fileName(extractFilenameFromPath(filePath))
+                                        .exists(false)
+                                        .description("License document for coLive: " + coliveName)
+                                        .build();
+                                documentDetailsList.add(fileDetails);
+                            }
+                        } catch (Exception e) {
+                            log.error("❌ Error loading document {}: {}", filePath, e.getMessage());
+                        }
+                    }
+
+                    log.info("✅ Retrieved {} documents for coLive: {}", documentDetailsList.size(), coliveName);
+                    return ResponseEntity.ok(documentDetailsList);
+                }
+            }
+
+            log.warn("❌ CoLive not found for user {}: {}", username, coliveName);
+            return ResponseEntity.badRequest().body(ErrorResponse.notFound("CoLive '" + coliveName + "' not found for this user"));
+        } catch (Exception e) {
+            log.error("❌ Error retrieving documents for user {} and coLive {}: {}", username, coliveName, e.getMessage(), e);
+            return ResponseEntity.status(500).body(ErrorResponse.internalServerError("Failed to retrieve documents: " + e.getMessage()));
+        }
+    }
 }
-
-
 

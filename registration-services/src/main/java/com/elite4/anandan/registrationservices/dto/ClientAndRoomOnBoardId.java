@@ -2,6 +2,7 @@ package com.elite4.anandan.registrationservices.dto;
 
 import jakarta.validation.Valid;
 import lombok.Data;
+import java.util.List;
 
 @Data
 public class ClientAndRoomOnBoardId {
@@ -10,8 +11,10 @@ public class ClientAndRoomOnBoardId {
     private String clientCategory;
     @Valid
     private BankDetails bankDetails;
-    private String aadharPhotoPath;
-    private String documentUploadPath;
+    private List<String> licenseDocumentsPath;
     private String documentType;
     private String documentNumber;
+    private List<String> uploadedPhotos;
+    private String aadharPhotoPath;
+    private String documentUploadPath;
 }

@@ -44,6 +44,76 @@ public class AdminService {
                 .collect(Collectors.toList());
     }
 
+    public UserResponse getUserClientsWithOutRooms(String username){
+        User activeUsers = userRepository.findAll()
+                .stream()
+                .filter(User::isActive)
+                .filter(u -> u.getUsername().equals(username))
+                .findFirst()
+                .orElse(null);
+        List<String> roleNames =  new ArrayList<>();
+        assert activeUsers != null;
+        Set<String> roleIds =  activeUsers.getRoleIds();
+        for(String roleId : roleIds) {
+            if(roleRepository.existsById(roleId)) {
+                roleRepository.findById(roleId).ifPresent(role -> {
+                    roleNames.add(role.getName().toString());
+                });
+            }
+        }
+        return toUserResponseWithOutRooms(activeUsers,roleNames);
+    }
+
+    public ColiveNameAndRooms getUserClientsWithRoomsAndUploadedPhotosAndAttachments(String username,String coLiveName) {
+        User activeUsers = userRepository.findAll()
+                .stream()
+                .filter(User::isActive)
+                .filter(u -> u.getUsername().equals(username))
+                .findFirst()
+                .orElse(null);
+        List<String> roleNames = new ArrayList<>();
+        assert activeUsers != null;
+        Set<String> roleIds = activeUsers.getRoleIds();
+        for (String roleId : roleIds) {
+            if (roleRepository.existsById(roleId)) {
+                roleRepository.findById(roleId).ifPresent(role -> {
+                    roleNames.add(role.getName().toString());
+                });
+            }
+        }
+        ColiveNameAndRooms coliveNameAndRooms = new ColiveNameAndRooms();
+        Set<ClientAndRoomOnBoardId> clientAndRoomOnBoardIds = activeUsers.getClientDetails();
+        if (clientAndRoomOnBoardIds != null) {
+            for (ClientAndRoomOnBoardId clientAndRoomOnBoardId : clientAndRoomOnBoardIds) {
+                if (clientAndRoomOnBoardId.getColiveName().equals(coLiveName)) {
+                    coliveNameAndRooms.setColiveName(clientAndRoomOnBoardId.getColiveName());
+                    coliveNameAndRooms.setLicenseDocumentsPath(clientAndRoomOnBoardId.getLicenseDocumentsPath());
+                    coliveNameAndRooms.setUploadedPhotos(clientAndRoomOnBoardId.getUploadedPhotos());
+                    String category = clientAndRoomOnBoardId.getClientCategory();
+                    if (category == null || category.trim().isEmpty()) {
+                        coliveNameAndRooms.setCategoryType(null);
+                    } else {
+                        coliveNameAndRooms.setCategoryType(ColiveNameAndRooms.categoryValues.valueOf(category));
+                    }
+                    /*get rooms for this specific coLiveName */
+                    String roomOnBoardId = clientAndRoomOnBoardId.getRoomOnBoardId();
+                    if (roomOnBoardId != null && !roomOnBoardId.trim().isEmpty()) {
+                        Optional<RoomOnBoardDocument> roomOnBoardDocument = roomsOrHouseRepository.findById(roomOnBoardId);
+                        if (roomOnBoardDocument.isPresent()) {
+                            Set<Room> retrievedRooms = roomOnBoardDocument.get().getRooms();
+                            // Handle null rooms safely
+                            if (retrievedRooms != null && !retrievedRooms.isEmpty()) {
+                                coliveNameAndRooms.setRooms(retrievedRooms);
+                            }
+
+                        }
+                    }
+                }
+            }
+        }
+        return coliveNameAndRooms;
+    }
+
     public UserResponse getUserWithRoles(String username){
         User activeUsers = userRepository.findAll()
                 .stream()
@@ -178,6 +248,39 @@ public class AdminService {
         return response;
     }
 
+    public UserResponse toUserResponseWithOutRooms(User user,List<String> roleNames) {
+        UserResponse response = new UserResponse();
+        response.setId(user.getId());
+        response.setUsername(user.getUsername());
+        response.setEmail(user.getEmail());
+        response.setRoleIds(user.getRoleIds());
+        response.setActive(user.isActive());
+        response.setCreatedAt(user.getCreatedAt());
+        response.setUpdatedAt(user.getUpdatedAt());
+        response.setLastLoginAt(user.getLastLoginAt());
+        response.setPhoneNumber(user.getPhoneRaw());
+        response.setAadharPhotoPath(user.getAadharPhotoPath());
+        Set<ColiveNameAndRooms> coliveNameAndRoomsSet = new HashSet<>();
+        Set<ClientAndRoomOnBoardId> clientAndRoomOnBoardIds = user.getClientDetails();
+        if (clientAndRoomOnBoardIds != null) {
+            for(ClientAndRoomOnBoardId clientAndRoomOnBoardId : clientAndRoomOnBoardIds) {
+                ColiveNameAndRooms coliveNameAndRooms = new ColiveNameAndRooms();
+                coliveNameAndRooms.setColiveName(clientAndRoomOnBoardId.getColiveName());
+                coliveNameAndRooms.setLicenseDocumentsPath(clientAndRoomOnBoardId.getLicenseDocumentsPath());
+                coliveNameAndRooms.setUploadedPhotos(clientAndRoomOnBoardId.getUploadedPhotos());
+                String category = clientAndRoomOnBoardId.getClientCategory();
+                if(category == null || category.trim().isEmpty()) {
+                    coliveNameAndRooms.setCategoryType(null);
+                } else {
+                    coliveNameAndRooms.setCategoryType(ColiveNameAndRooms.categoryValues.valueOf(category));}
+                coliveNameAndRoomsSet.add(coliveNameAndRooms);
+            }
+        }
+        response.setClientNameAndRooms(coliveNameAndRoomsSet);
+        response.setRoleNames(roleNames);
+        return response;
+    }
+
     public UserResponse toUserResponse(User user) {
         UserResponse response = new UserResponse();
         response.setId(user.getId());
@@ -189,6 +292,7 @@ public class AdminService {
         response.setUpdatedAt(user.getUpdatedAt());
         response.setLastLoginAt(user.getLastLoginAt());
         response.setPhoneNumber(user.getPhoneRaw());
+        response.setAadharPhotoPath(user.getAadharPhotoPath());
         Set<ColiveNameAndRooms> coliveNameAndRoomsSet = new HashSet<>();
         Set<ClientAndRoomOnBoardId> clientAndRoomOnBoardIds = user.getClientDetails();
         if (clientAndRoomOnBoardIds != null) {
@@ -212,6 +316,8 @@ public class AdminService {
                 }
 
                 coliveNameAndRooms.setRooms(roomNumbers);
+                coliveNameAndRooms.setLicenseDocumentsPath(clientAndRoomOnBoardId.getLicenseDocumentsPath());
+                coliveNameAndRooms.setUploadedPhotos(clientAndRoomOnBoardId.getUploadedPhotos());
                 String category = clientAndRoomOnBoardId.getClientCategory();
                 if(category == null || category.trim().isEmpty()) {
                     coliveNameAndRooms.setCategoryType(null);

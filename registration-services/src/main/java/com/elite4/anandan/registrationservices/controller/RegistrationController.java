@@ -2,8 +2,10 @@ package com.elite4.anandan.registrationservices.controller;
 
 import com.elite4.anandan.registrationservices.dto.*;
 import com.elite4.anandan.registrationservices.service.RegistrationService;
+import com.elite4.anandan.registrationservices.service.RoomAvailabilityService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -18,9 +20,11 @@ import org.springframework.web.bind.annotation.CrossOrigin;
 @RequestMapping("/registrations")
 @RequiredArgsConstructor
 @CrossOrigin(origins = "*", allowedHeaders = "*")
+@Slf4j
 public class RegistrationController {
 
     private final RegistrationService registrationService;
+    private final RoomAvailabilityService roomAvailabilityService;
     private final ObjectMapper objectMapper;
 
     @PostMapping("/onboardUser")
@@ -102,16 +106,16 @@ public class RegistrationController {
 
     @GetMapping("/user/room/{roomNumber}")
     @PreAuthorize("hasAnyRole('ADMIN','MODERATOR')")
-    public List<RegistrationWithRoomRequest> findAllByRoomNumber( @RequestParam String clientUserName,
-                                                   @RequestParam String clientName,@PathVariable String roomNumber) {
-        return registrationService.findAllByRoomNumber(clientUserName,clientName,roomNumber);
+    public List<RegistrationWithRoomRequest> findAllByRoomNumber( @RequestParam String coliveUserName,
+                                                   @RequestParam String coliveName,@PathVariable String roomNumber) {
+        return registrationService.findAllByRoomNumber(coliveUserName,coliveName,roomNumber);
     }
 
     @GetMapping("/user/house/{houseNumber}")
     @PreAuthorize("hasAnyRole('ADMIN','MODERATOR')")
-    public List<RegistrationWithRoomRequest> findAllByHouseNumber(@RequestParam String clientUserName,
-                                                   @RequestParam String clientName,@PathVariable String houseNumber) {
-        return registrationService.findAllByHouseNumber(clientUserName, clientName,houseNumber);
+    public List<RegistrationWithRoomRequest> findAllByHouseNumber(@RequestParam String coliveUserName,
+                                                   @RequestParam String coliveName,@PathVariable String houseNumber) {
+        return registrationService.findAllByHouseNumber(coliveUserName, coliveName,houseNumber);
     }
 
 
@@ -123,16 +127,16 @@ public class RegistrationController {
 
     /*@GetMapping("/user/room/{roomType}")
     @PreAuthorize("hasAnyRole('ADMIN','MODERATOR')")
-    public List<RegistrationWithRoomRequest> findAllByRoomType(@RequestParam String clientUserName,
-                                                @RequestParam String clientName,@PathVariable String roomType) {
-        return registrationService.findAllByRoomType(clientUserName,clientName,roomType);
+    public List<RegistrationWithRoomRequest> findAllByRoomType(@RequestParam String coliveUserName,
+                                                @RequestParam String coliveName,@PathVariable String roomType) {
+        return registrationService.findAllByRoomType(coliveUserName,coliveName,roomType);
     }*/
 
    /* @GetMapping("/user/house/{houseType}")
     @PreAuthorize("hasAnyRole('ADMIN','MODERATOR')")
-    public List<RegistrationWithRoomRequest> findAllByHouseType(@RequestParam String clientUserName,
-                                                 @RequestParam String clientName,@PathVariable String houseType) {
-        return registrationService.findAllByHouseType(clientUserName,clientName,houseType);
+    public List<RegistrationWithRoomRequest> findAllByHouseType(@RequestParam String coliveUserName,
+                                                 @RequestParam String coliveName,@PathVariable String houseType) {
+        return registrationService.findAllByHouseType(coliveUserName,coliveName,houseType);
     }*/
 
     @GetMapping("/gender/{gender}")
@@ -321,6 +325,52 @@ public class RegistrationController {
             return ResponseEntity.ok(registrationService.getRegistrationFileInfo(registrationId));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.notFound().build();
+        }
+    }
+
+    /**
+     * Get availability status for all rooms in a property
+     * Used for dashboard display
+     */
+    @GetMapping("/rooms/availability/{coliveUserName}/{coliveName}")
+    @PreAuthorize("hasAnyRole('ADMIN','MODERATOR','USER','GUEST')")
+    public ResponseEntity<List<RoomAvailabilityDTO>> getAllRoomsAvailability(
+            @PathVariable String coliveUserName,
+            @PathVariable String coliveName) {
+        log.info("Getting availability for all rooms in {} owned by {}", coliveName, coliveUserName);
+
+        try {
+            List<RoomAvailabilityDTO> availability =
+                roomAvailabilityService.getAllRoomsAvailability(coliveUserName, coliveName);
+
+            return ResponseEntity.ok(availability);
+        } catch (Exception e) {
+            log.error("Error fetching room availability: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
+    /**
+     * Get availability for a specific room
+     */
+    @GetMapping("/rooms/availability/{coliveUserName}/{coliveName}/room/{roomNumber}")
+    @PreAuthorize("hasAnyRole('ADMIN','MODERATOR','USER','GUEST')")
+    public ResponseEntity<RoomAvailabilityDTO> getRoomAvailability(
+            @PathVariable String coliveUserName,
+            @PathVariable String coliveName,
+            @PathVariable String roomNumber,
+            @RequestParam(required = false, defaultValue = "1") Integer roomCapacity) {
+        log.info("Getting availability for room {} in {}", roomNumber, coliveName);
+
+        try {
+            RoomAvailabilityDTO availability =
+                roomAvailabilityService.calculateRoomAvailability(coliveName, coliveUserName,
+                                                                  roomNumber, roomCapacity);
+
+            return ResponseEntity.ok(availability);
+        } catch (Exception e) {
+            log.error("Error fetching room availability: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
 

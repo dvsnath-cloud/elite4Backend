@@ -9,6 +9,7 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -29,6 +30,7 @@ import java.util.Set;
  * Filter that authenticates requests based on JWT tokens sent in the Authorization header.
  */
 @Component
+@Slf4j
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private final AntPathMatcher matcher = new AntPathMatcher();
     private final JwtTokenProvider tokenProvider;
@@ -49,45 +51,93 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         String jwt = resolveToken(request);
 
-        if (jwt != null && tokenProvider.validateToken(jwt) && SecurityContextHolder.getContext().getAuthentication() == null) {
-            // Get email or phoneNumber from token (not username)
-            String emailOrPhone = tokenProvider.getEmailOrPhoneFromToken(jwt);
+        if (jwt != null) {
+            log.debug("🔐 JWT token found in request. Length: {}", jwt.length());
 
-            // Find user by email or phoneNumber
-            Optional<User> userOpt = Optional.empty();
+            if (!tokenProvider.validateToken(jwt)) {
+                log.warn("❌ JWT token validation failed");
+                filterChain.doFilter(request, response);
+                return;
+            }
+            log.debug("✅ JWT token validated successfully");
 
-            // Try to find by email first
-            if (emailOrPhone.contains("@")) {
-                // It's an email (contains @)
-                userOpt = userRepository.findByEmail(emailOrPhone);
-            } else {
-                // It's a phone number
-                userOpt = userRepository.findByPhoneRaw(emailOrPhone);
+            if (SecurityContextHolder.getContext().getAuthentication() != null) {
+                log.debug("⚠️ Authentication already exists in SecurityContext, skipping");
+                filterChain.doFilter(request, response);
+                return;
             }
 
-            if (userOpt.isPresent()) {
-                User user = userOpt.get();
-                Set<String> resolvedRoles = new HashSet<>();
-                for (String value : user.getRoleIds()) {
-                    if (value == null || value.isBlank()) {
-                        continue;
+            try {
+                // Get email or phoneNumber from token (not username)
+                String emailOrPhone = tokenProvider.getEmailOrPhoneFromToken(jwt);
+                log.debug("🔍 Extracted identifier from token: {}", emailOrPhone);
+
+                // Find user by email or phoneNumber
+                Optional<User> userOpt = Optional.empty();
+
+                // Try to find by email first
+                if (emailOrPhone.contains("@")) {
+                    // It's an email (contains @)
+                    log.debug("🔍 Attempting to find user by email: {}", emailOrPhone);
+                    userOpt = userRepository.findByEmail(emailOrPhone);
+                    if (userOpt.isPresent()) {
+                        log.info("✅ User found by email: {}", userOpt.get().getUsername());
+                    } else {
+                        log.warn("❌ No user found with email: {}", emailOrPhone);
                     }
-                    Optional<Role> savedRole  = roleRepository.findById(value);
-                    if (savedRole.isPresent()) {
-                        resolvedRoles.add(savedRole.get().getName().name());
+                } else {
+                    // It's a phone number
+                    log.debug("🔍 Attempting to find user by phone: {}", emailOrPhone);
+                    userOpt = userRepository.findByPhoneE164(emailOrPhone);
+                    if (userOpt.isEmpty()) {
+                        log.debug("⚠️ Phone not found as E164, trying raw phone lookup");
+                        userOpt = userRepository.findByPhoneRaw(emailOrPhone);
+                    }
+                    if (userOpt.isPresent()) {
+                        log.info("✅ User found by phone: {}", userOpt.get().getUsername());
+                    } else {
+                        log.warn("❌ No user found with phone: {}", emailOrPhone);
                     }
                 }
-                List<SimpleGrantedAuthority> authorities = resolvedRoles
-                        .stream()
-                        .map(SimpleGrantedAuthority::new)
-                        .toList();
 
-                // Use email/phone as principal instead of username
-                UsernamePasswordAuthenticationToken authentication =
-                        new UsernamePasswordAuthenticationToken(emailOrPhone, null, authorities);
-                authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-                SecurityContextHolder.getContext().setAuthentication(authentication);
+                if (userOpt.isPresent()) {
+                    User user = userOpt.get();
+                    log.info("🔐 Setting authentication for user: {}", user.getUsername());
+
+                    Set<String> resolvedRoles = new HashSet<>();
+                    for (String value : user.getRoleIds()) {
+                        if (value == null || value.isBlank()) {
+                            continue;
+                        }
+                        Optional<Role> savedRole = roleRepository.findById(value);
+                        if (savedRole.isPresent()) {
+                            resolvedRoles.add(savedRole.get().getName().name());
+                            log.debug("✅ Role loaded: {}", savedRole.get().getName().name());
+                        } else {
+                            log.warn("⚠️ Role not found for ID: {}", value);
+                        }
+                    }
+                    List<SimpleGrantedAuthority> authorities = resolvedRoles
+                            .stream()
+                            .map(SimpleGrantedAuthority::new)
+                            .toList();
+
+                    // Use email/phone as principal instead of username
+                    UsernamePasswordAuthenticationToken authentication =
+                            new UsernamePasswordAuthenticationToken(emailOrPhone, null, authorities);
+                    authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                    SecurityContextHolder.getContext().setAuthentication(authentication);
+
+                    log.info("✅ Authentication set successfully for user: {} with {} roles",
+                            user.getUsername(), authorities.size());
+                } else {
+                    log.warn("❌ User not found for identifier: {}", emailOrPhone);
+                }
+            } catch (Exception e) {
+                log.error("❌ Exception in JWT authentication filter: {}", e.getMessage(), e);
             }
+        } else {
+            log.debug("⚠️ No JWT token found in request");
         }
 
         filterChain.doFilter(request, response);
