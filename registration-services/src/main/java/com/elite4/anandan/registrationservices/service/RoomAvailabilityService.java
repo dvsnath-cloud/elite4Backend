@@ -106,11 +106,12 @@ public class RoomAvailabilityService {
 
     /**
      * Calculate availability status for a house/flat
+     * For HOUSE/FLAT, roomCapacity is not applicable - a house is either AVAILABLE or OCCUPIED
      *
      * @param coliveName - Name of the property
      * @param coliveUserName - Username of property owner
      * @param houseNumber - House number to check
-     * @param roomCapacity - Total capacity
+     * @param roomCapacity - Ignored for HOUSE/FLAT
      * @return RoomAvailabilityDTO with current occupancy status and gender counts
      */
     public RoomAvailabilityDTO calculateHouseAvailability(String coliveName, String coliveUserName,
@@ -142,26 +143,20 @@ public class RoomAvailabilityService {
                         reg.getGender().equals(Registration.Gender.FEMALE))
                 .count();
 
-            if (roomCapacity == null || roomCapacity <= 0) {
-                roomCapacity = 1;
-            }
-
-            String status = determineAvailabilityStatus(currentOccupants, roomCapacity);
-            double occupancyPercentage = calculateOccupancyPercentage(currentOccupants, roomCapacity);
+            // For HOUSE/FLAT: no capacity concept - simply AVAILABLE or OCCUPIED
+            String status = currentOccupants == 0 ? "AVAILABLE" : "OCCUPIED";
 
             RoomAvailabilityDTO dto = RoomAvailabilityDTO.builder()
                 .coliveName(coliveName)
                 .houseNumber(houseNumber)
-                .roomCapacity(roomCapacity)
                 .currentOccupants(currentOccupants)
                 .availabilityStatus(status)
-                .occupancyPercentage(occupancyPercentage)
                 .maleTenantsCount((int) maleCount)
                 .femaleTenantsCount((int) femaleCount)
                 .build();
 
-            log.info("House {} availability: {} ({} / {} members) - Males: {}, Females: {}",
-                     houseNumber, status, currentOccupants, roomCapacity, maleCount, femaleCount);
+            log.info("House {} availability: {} ({} members) - Males: {}, Females: {}",
+                     houseNumber, status, currentOccupants, maleCount, femaleCount);
 
             return dto;
         } catch (Exception e) {

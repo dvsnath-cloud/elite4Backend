@@ -6,9 +6,11 @@ import com.elite4.anandan.registrationservices.dto.*;
 import com.elite4.anandan.registrationservices.model.EmployeeRole;
 import com.elite4.anandan.registrationservices.model.Role;
 import com.elite4.anandan.registrationservices.model.User;
+import com.elite4.anandan.registrationservices.document.TransferRequestDocument;
 import com.elite4.anandan.registrationservices.repository.RegistrationRepository;
 import com.elite4.anandan.registrationservices.repository.RoleRepository;
 import com.elite4.anandan.registrationservices.repository.RoomsOrHouseRepository;
+import com.elite4.anandan.registrationservices.repository.TransferRequestRepository;
 import com.elite4.anandan.registrationservices.repository.UserRepository;
 import com.google.i18n.phonenumbers.NumberParseException;
 import com.google.i18n.phonenumbers.PhoneNumberUtil;
@@ -40,11 +42,17 @@ public class RegistrationService {
     private final RoleRepository roleRepository;
     private final PasswordEncoder passwordEncoder;
     private final PhoneService phoneService;
+    private final TransferRequestRepository transferRequestRepository;
 
     @Value("${tenant.default-password:Tenant@123}")
     private String defaultTenantPassword;
 
     public RegistrationWithRoomRequest create(Registration dto, RoomForRegistration room) {
+        return create(dto, room, false);
+    }
+
+    public RegistrationWithRoomRequest create(Registration dto, RoomForRegistration room,
+                                               boolean skipPendingTransferCheck) {
         // Validate that coliveUserName is provided (required field)
         if (dto.getColiveUserName() == null || dto.getColiveUserName().trim().isEmpty()) {
             throw new IllegalArgumentException("Client username must be provided for registration");
@@ -55,14 +63,31 @@ public class RegistrationService {
             throw new IllegalArgumentException("Contact number must be provided for registration");
         }
 
-        // Check if user with same contact number is already onboarded
-        Optional<RegistrationDocument> existingRegistrationByContact = registrationRepository.findByContactNo(dto.getContactNo());
+        // Check if user with same contact number is already onboarded (only active/occupied registrations)
+        Optional<RegistrationDocument> existingRegistrationByContact = registrationRepository.findByContactNoAndOccupied(dto.getContactNo(), Registration.roomOccupied.OCCUPIED);
         if (existingRegistrationByContact.isPresent()) {
             throw new IllegalArgumentException(
                     "A user is already onboarded with contact number '" + dto.getContactNo() +
                             "'. User name: '" + existingRegistrationByContact.get().getFname() +
                             "', Client: '" + existingRegistrationByContact.get().getColiveName() + "'"
             );
+        }
+
+        // Block registration if any registration with this contact number has a pending transfer
+        if (!skipPendingTransferCheck) {
+            List<RegistrationDocument> allByContact = registrationRepository.findAllByContactNo(dto.getContactNo());
+            for (RegistrationDocument reg : allByContact) {
+                List<TransferRequestDocument> transfers = transferRequestRepository
+                        .findByTenantRegistrationId(reg.getId());
+                boolean hasPending = transfers.stream()
+                        .anyMatch(t -> t.getStatus() == TransferRequestDocument.TransferStatus.PENDING_SOURCE_APPROVAL
+                                || t.getStatus() == TransferRequestDocument.TransferStatus.PENDING_DESTINATION_APPROVAL);
+                if (hasPending) {
+                    throw new IllegalArgumentException(
+                            "Cannot register: a transfer request is pending for contact number '" + dto.getContactNo()
+                                    + "'. Please complete or reject the transfer first.");
+                }
+            }
         }
 
         // Validate that fname, coliveName, and contactNo combination doesn't already exist
@@ -189,6 +214,7 @@ public class RegistrationService {
         // Proceed with registration
         RegistrationDocument doc = toDocumentWithId(id, dto, room);
         doc = registrationRepository.save(doc);
+        ensureTenantUserAccount(doc);
 
         // send notification after successful registration
         //sendRegistrationNotifications(dto, room);
@@ -274,6 +300,7 @@ public class RegistrationService {
 
                     // SAVE to MongoDB
                     registrationRepository.save(doc);
+                    ensureTenantUserAccount(doc);
                     log.info("File paths persisted for registration: {}", registrationId);
 
                     // Update response with persisted data
@@ -385,13 +412,40 @@ public class RegistrationService {
     }
 
     private String getOrCreateUserRoleId() {
-        return roleRepository.findByName(EmployeeRole.ROLE_USER)
-                .map(Role::getId)
-                .orElseGet(() -> {
-                    Role role = new Role();
-                    role.setName(EmployeeRole.ROLE_USER);
-                    return roleRepository.save(role).getId();
-                });
+        try {
+            Optional<Role> existing = roleRepository.findByName(EmployeeRole.ROLE_USER);
+            if (existing.isPresent()) {
+                return existing.get().getId();
+            }
+        } catch (Exception e) {
+            log.warn("ROLE_USER lookup by name failed, falling back to scan: {}", e.getMessage());
+        }
+
+        try {
+            Optional<Role> scanned = roleRepository.findAll().stream()
+                    .filter(Objects::nonNull)
+                    .filter(role -> role.getName() == EmployeeRole.ROLE_USER)
+                    .findFirst();
+            if (scanned.isPresent()) {
+                return scanned.get().getId();
+            }
+        } catch (Exception e) {
+            log.warn("ROLE_USER scan failed before create: {}", e.getMessage());
+        }
+
+        try {
+            Role role = new Role();
+            role.setName(EmployeeRole.ROLE_USER);
+            return roleRepository.save(role).getId();
+        } catch (Exception e) {
+            log.warn("ROLE_USER create failed, retrying scan: {}", e.getMessage());
+            return roleRepository.findAll().stream()
+                    .filter(Objects::nonNull)
+                    .filter(role -> role.getName() == EmployeeRole.ROLE_USER)
+                    .map(Role::getId)
+                    .findFirst()
+                    .orElseThrow(() -> new IllegalStateException("Unable to resolve ROLE_USER id", e));
+        }
     }
 
     private String buildTenantUsername(RegistrationDocument doc) {
@@ -525,14 +579,12 @@ public class RegistrationService {
                         coliveUserName,
                         roomNumber,
                         Registration.roomOccupied.OCCUPIED).stream()
-                .filter(doc -> doc.getCheckOutDate() == null || doc.getCheckOutDate().toString().isBlank())
                 .map(this::toDto)
                 .collect(Collectors.toList());
     }
 
     public List<RegistrationWithRoomRequest> findAllByHouseNumber(String coliveUserName, String coliveName, String roomNumber) {
         return registrationRepository.findByColiveUserNameAndColiveNameAndRoomForRegistrationHouseNumberAndOccupied(coliveUserName, coliveName, roomNumber, Registration.roomOccupied.OCCUPIED).stream()
-                .filter(doc -> doc.getCheckOutDate() == null || doc.getCheckOutDate().toString().isBlank())
                 .map(this::toDto)
                 .collect(Collectors.toList());
     }
@@ -589,12 +641,34 @@ public class RegistrationService {
     }
 
     public Optional<RegistrationWithRoomRequest> checkout(UpdateUserForCheckOut updateUserForCheckOut) {
+        return checkout(updateUserForCheckOut, false);
+    }
+
+    /**
+     * Checkout a tenant with an option to skip the pending transfer check.
+     * Use skipTransferCheck=true only for internal transfer approval flow.
+     */
+    public Optional<RegistrationWithRoomRequest> checkout(UpdateUserForCheckOut updateUserForCheckOut,
+                                                           boolean skipTransferCheck) {
         if (updateUserForCheckOut == null || updateUserForCheckOut.getRegistrationId() == null) {
             return Optional.empty();
         }
 
         String id = updateUserForCheckOut.getRegistrationId();
         Date checkOutDate = updateUserForCheckOut.getCheckOutDate();
+
+        // Block checkout if a transfer request is pending for this tenant
+        if (!skipTransferCheck) {
+            List<TransferRequestDocument> pendingTransfers = transferRequestRepository
+                    .findByTenantRegistrationId(id);
+            boolean hasActiveTransfer = pendingTransfers.stream()
+                    .anyMatch(t -> t.getStatus() == TransferRequestDocument.TransferStatus.PENDING_SOURCE_APPROVAL
+                            || t.getStatus() == TransferRequestDocument.TransferStatus.PENDING_DESTINATION_APPROVAL);
+            if (hasActiveTransfer) {
+                throw new IllegalArgumentException(
+                        "Cannot checkout tenant: a transfer request is pending. Please complete or reject the transfer first.");
+            }
+        }
 
         return registrationRepository.findById(id)
                 .map(doc -> {
@@ -812,6 +886,7 @@ public class RegistrationService {
                 .occupied(dto.getRoomOccupied())
                 .coliveUserName(dto.getColiveUserName())
                 .coliveName(dto.getColiveName())
+                .advanceAmount(dto.getAdvanceAmount())
                 .roomRent(dto.getRoomRent())
                 .roomForRegistration(room)
                 .parentContactNo(dto.getParentContactNo())
@@ -855,6 +930,7 @@ public class RegistrationService {
             room.setRoomNumber(doc.getRoomForRegistration().getRoomNumber());
             room.setHouseNumber(doc.getRoomForRegistration().getHouseNumber());
             room.setRoomType(doc.getRoomForRegistration().getRoomType());
+            room.setRoomCapacity(doc.getRoomForRegistration().getRoomCapacity());
             room.setHouseType(doc.getRoomForRegistration().getHouseType());
             dtoWithRoom.setRoom(room);
         }

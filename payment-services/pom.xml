@@ -8,7 +8,6 @@
         <groupId>com.elite4.anandan</groupId>
         <artifactId>elite4colive</artifactId>
         <version>0.0.1-SNAPSHOT</version>
-        <relativePath>..</relativePath>
     </parent>
 
     <artifactId>payment-services</artifactId>

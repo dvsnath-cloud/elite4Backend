@@ -2,6 +2,7 @@ package com.elite4.anandan.registrationservices.service;
 
 import com.elite4.anandan.registrationservices.document.RoomOnBoardDocument;
 import com.elite4.anandan.registrationservices.dto.ClientAndRoomOnBoardId;
+import com.elite4.anandan.registrationservices.dto.ColiveListItem;
 import com.elite4.anandan.registrationservices.dto.ColiveNameAndRooms;
 import com.elite4.anandan.registrationservices.dto.Room;
 import com.elite4.anandan.registrationservices.dto.UserResponse;
@@ -31,6 +32,44 @@ public class AdminService {
         this.userRepository = userRepository;
         this.roleRepository = roleRepository;
         this.roomsOrHouseRepository = roomsOrHouseRepository;
+    }
+
+    /**
+     * Search active CoLive properties by name (case-insensitive contains match).
+     * Returns matching property names only (no rooms). Limited to 20 results.
+     * Rooms are fetched separately after the user selects a property.
+     */
+    public List<ColiveListItem> searchColiveProperties(String search) {
+        if (search == null || search.trim().isEmpty()) {
+            return Collections.emptyList();
+        }
+        String lowerSearch = search.trim().toLowerCase();
+        List<ColiveListItem> result = new ArrayList<>();
+        List<User> activeUsers = userRepository.findAll().stream()
+                .filter(User::isActive)
+                .filter(u -> u.getClientDetails() != null && !u.getClientDetails().isEmpty())
+                .collect(Collectors.toList());
+
+        for (User user : activeUsers) {
+            for (ClientAndRoomOnBoardId client : user.getClientDetails()) {
+                if (client.getColiveName() == null ||
+                        !client.getColiveName().toLowerCase().contains(lowerSearch)) {
+                    continue;
+                }
+
+                result.add(new ColiveListItem(
+                        user.getUsername(),
+                        client.getColiveName(),
+                        client.getClientCategory(),
+                        Collections.emptyList()
+                ));
+
+                if (result.size() >= 20) {
+                    return result;
+                }
+            }
+        }
+        return result;
     }
 
     /**

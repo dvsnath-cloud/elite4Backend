@@ -21,6 +21,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
+import com.elite4.anandan.registrationservices.dto.ColiveListItem;
+
 /**
  * REST controller exposing auth-related APIs such as signup and login.
  */
@@ -347,6 +349,17 @@ public class UserController {
      * Get user details by username.
      * Requires ADMIN or MODERATOR role.
      */
+    /**
+     * Search active CoLive properties by name for transfer selection.
+     * Requires at least 1 character in the search param.
+     */
+    @GetMapping("/admin/colives")
+    @PreAuthorize("hasAnyRole('USER','ADMIN','MODERATOR')")
+    public ResponseEntity<List<ColiveListItem>> searchColiveProperties(
+            @RequestParam(required = true) String search) {
+        return ResponseEntity.ok(adminService.searchColiveProperties(search));
+    }
+
     @GetMapping("/admin/user/{username}")
     @PreAuthorize("hasAnyRole('USER','ADMIN','MODERATOR')")
     public ResponseEntity<?> getUserByUsername(@PathVariable String username) {

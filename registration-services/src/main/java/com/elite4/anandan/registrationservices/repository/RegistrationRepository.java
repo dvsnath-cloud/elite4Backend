@@ -13,6 +13,8 @@ import java.util.Optional;
 public interface RegistrationRepository extends MongoRepository<RegistrationDocument, String> {
     Optional<RegistrationDocument> findByEmail(String email);
     Optional<RegistrationDocument> findByContactNo(String contactNo);
+    List<RegistrationDocument> findAllByContactNo(String contactNo);
+    Optional<RegistrationDocument> findByContactNoAndOccupied(String contactNo, Registration.roomOccupied occupied);
     List<RegistrationDocument> findByColiveNameAndColiveUserName(String coliveName, String coliveUserName);
     List<RegistrationDocument> findAllByColiveUserNameAndColiveNameAndRoomForRegistrationRoomType(String coliveUserName,String coliveName,String roomType);
     List<RegistrationDocument> findAllByColiveUserNameAndColiveNameAndRoomForRegistrationHouseType(String coliveUserName,String coliveName,String houseType);

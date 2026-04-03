@@ -1,10 +1,12 @@
 package com.elite4.anandan.registrationservices.dto;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import lombok.Data;
 
 import java.util.Objects;
 
 @Data
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class RoomForRegistration {
     private RoomType roomType;
     private String roomNumber;

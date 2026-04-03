@@ -3,11 +3,13 @@ package com.elite4.anandan.registrationservices.dto;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import lombok.Data;
 
 import java.util.Date;
 
 @Data
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class Registration {
     private String regId;
 
@@ -60,6 +62,8 @@ public class Registration {
     private String parentContactNo;
 
     private double roomRent;
+
+    private RoomForRegistration room;
 
     public enum roomOccupied {
         OCCUPIED, NOT_OCCUPIED,VACATED

@@ -230,13 +230,22 @@ public class RegistrationController {
     public ResponseEntity<RegistrationWithRoomRequest> updateWithFiles(
             @PathVariable String id,
             @RequestParam String registration,
-            @RequestParam String room,
+            @RequestParam(required = false) String room,
             @RequestParam Boolean changingRoom,
             @RequestParam(required = false) MultipartFile newAadharPhoto,
             @RequestParam(required = false) MultipartFile newDocument) throws IOException {
 
         Registration registrationDto = objectMapper.readValue(registration, Registration.class);
-        RoomForRegistration roomDto = objectMapper.readValue(room, RoomForRegistration.class);
+
+        // Room can come embedded in registration JSON or as a separate param
+        RoomForRegistration roomDto;
+        if (registrationDto.getRoom() != null) {
+            roomDto = registrationDto.getRoom();
+        } else if (room != null && !room.isBlank()) {
+            roomDto = objectMapper.readValue(room, RoomForRegistration.class);
+        } else {
+            roomDto = new RoomForRegistration();
+        }
 
         byte[] aadharPhotoBytes = newAadharPhoto != null && !newAadharPhoto.isEmpty() ? newAadharPhoto.getBytes() : null;
         byte[] documentBytes = newDocument != null && !newDocument.isEmpty() ? newDocument.getBytes() : null;
