@@ -42,6 +42,8 @@ public class User {
     private Instant createdAt;
     private Instant updatedAt;
     private Instant lastLoginAt;
+    private String ownerOfClient;
+    private Set<String> rooms = new HashSet<>();
 
     public User() {
         this.createdAt = Instant.now();
@@ -93,4 +95,8 @@ public class User {
     public void setLastLoginAt(Instant lastLoginAt) { this.lastLoginAt = lastLoginAt; }
     public String getAadharPhotoPath() { return aadharPhotoPath; }
     public void setAadharPhotoPath(String aadharPhotoPath) { this.aadharPhotoPath = aadharPhotoPath; }
+    public String getOwnerOfClient() { return ownerOfClient; }
+    public void setOwnerOfClient(String ownerOfClient) { this.ownerOfClient = ownerOfClient; }
+    public Set<String> getRooms() { return rooms; }
+    public void setRooms(Set<String> rooms) { this.rooms = rooms != null ? rooms : new HashSet<>(); }
 }

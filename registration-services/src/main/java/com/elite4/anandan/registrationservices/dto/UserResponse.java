@@ -28,6 +28,10 @@ public class UserResponse {
     private Instant lastLoginAt;
     private Set<ColiveNameAndRooms> coliveNameAndRooms;
     private List<String> roleNames;
+    private String ownerOfClient;
+    private Set<ClientAndRoomOnBoardId> clientDetails;
+    private String phoneNumberE164;
+    private Set<String> rooms;
 
     public String getId() {
         return id;
@@ -123,5 +127,37 @@ public class UserResponse {
 
     public void setAadharPhotoPath(String aadharPhotoPath) {
         this.aadharPhotoPath = aadharPhotoPath;
+    }
+
+    public String getOwnerOfClient() {
+        return ownerOfClient;
+    }
+
+    public void setOwnerOfClient(String ownerOfClient) {
+        this.ownerOfClient = ownerOfClient;
+    }
+
+    public Set<ClientAndRoomOnBoardId> getClientDetails() {
+        return clientDetails;
+    }
+
+    public void setClientDetails(Set<ClientAndRoomOnBoardId> clientDetails) {
+        this.clientDetails = clientDetails;
+    }
+
+    public String getPhoneNumberE164() {
+        return phoneNumberE164;
+    }
+
+    public void setPhoneNumberE164(String phoneNumberE164) {
+        this.phoneNumberE164 = phoneNumberE164;
+    }
+
+    public Set<String> getRooms() {
+        return rooms;
+    }
+
+    public void setRooms(Set<String> rooms) {
+        this.rooms = rooms;
     }
 }

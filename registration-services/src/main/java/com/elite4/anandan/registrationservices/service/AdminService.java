@@ -2,74 +2,35 @@ package com.elite4.anandan.registrationservices.service;
 
 import com.elite4.anandan.registrationservices.document.RoomOnBoardDocument;
 import com.elite4.anandan.registrationservices.dto.ClientAndRoomOnBoardId;
+import com.elite4.anandan.registrationservices.dto.UserResponse;
 import com.elite4.anandan.registrationservices.dto.ColiveListItem;
 import com.elite4.anandan.registrationservices.dto.ColiveNameAndRooms;
 import com.elite4.anandan.registrationservices.dto.Room;
-import com.elite4.anandan.registrationservices.dto.UserResponse;
 import com.elite4.anandan.registrationservices.model.User;
 import com.elite4.anandan.registrationservices.repository.RoleRepository;
-import com.elite4.anandan.registrationservices.repository.RoomsOrHouseRepository;
 import com.elite4.anandan.registrationservices.repository.UserRepository;
+import com.elite4.anandan.registrationservices.repository.RoomsOrHouseRepository;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 
-/**
- * Service for admin operations on user accounts.
- */
 @Service
 public class AdminService {
 
     private final UserRepository userRepository;
-
     private final RoleRepository roleRepository;
-
     private final RoomsOrHouseRepository roomsOrHouseRepository;
 
     public AdminService(UserRepository userRepository, RoleRepository roleRepository, RoomsOrHouseRepository roomsOrHouseRepository) {
         this.userRepository = userRepository;
         this.roleRepository = roleRepository;
         this.roomsOrHouseRepository = roomsOrHouseRepository;
-    }
-
-    /**
-     * Search active CoLive properties by name (case-insensitive contains match).
-     * Returns matching property names only (no rooms). Limited to 20 results.
-     * Rooms are fetched separately after the user selects a property.
-     */
-    public List<ColiveListItem> searchColiveProperties(String search) {
-        if (search == null || search.trim().isEmpty()) {
-            return Collections.emptyList();
-        }
-        String lowerSearch = search.trim().toLowerCase();
-        List<ColiveListItem> result = new ArrayList<>();
-        List<User> activeUsers = userRepository.findAll().stream()
-                .filter(User::isActive)
-                .filter(u -> u.getClientDetails() != null && !u.getClientDetails().isEmpty())
-                .collect(Collectors.toList());
-
-        for (User user : activeUsers) {
-            for (ClientAndRoomOnBoardId client : user.getClientDetails()) {
-                if (client.getColiveName() == null ||
-                        !client.getColiveName().toLowerCase().contains(lowerSearch)) {
-                    continue;
-                }
-
-                result.add(new ColiveListItem(
-                        user.getUsername(),
-                        client.getColiveName(),
-                        client.getClientCategory(),
-                        Collections.emptyList()
-                ));
-
-                if (result.size() >= 20) {
-                    return result;
-                }
-            }
-        }
-        return result;
     }
 
     /**
@@ -81,96 +42,6 @@ public class AdminService {
                 .filter(user -> !user.isActive())
                 .map(this::toUserResponse)
                 .collect(Collectors.toList());
-    }
-
-    public UserResponse getUserClientsWithOutRooms(String username){
-        User activeUsers = userRepository.findAll()
-                .stream()
-                .filter(User::isActive)
-                .filter(u -> u.getUsername().equals(username))
-                .findFirst()
-                .orElse(null);
-        List<String> roleNames =  new ArrayList<>();
-        assert activeUsers != null;
-        Set<String> roleIds =  activeUsers.getRoleIds();
-        for(String roleId : roleIds) {
-            if(roleRepository.existsById(roleId)) {
-                roleRepository.findById(roleId).ifPresent(role -> {
-                    roleNames.add(role.getName().toString());
-                });
-            }
-        }
-        return toUserResponseWithOutRooms(activeUsers,roleNames);
-    }
-
-    public ColiveNameAndRooms getUserClientsWithRoomsAndUploadedPhotosAndAttachments(String username,String coLiveName) {
-        User activeUsers = userRepository.findAll()
-                .stream()
-                .filter(User::isActive)
-                .filter(u -> u.getUsername().equals(username))
-                .findFirst()
-                .orElse(null);
-        List<String> roleNames = new ArrayList<>();
-        assert activeUsers != null;
-        Set<String> roleIds = activeUsers.getRoleIds();
-        for (String roleId : roleIds) {
-            if (roleRepository.existsById(roleId)) {
-                roleRepository.findById(roleId).ifPresent(role -> {
-                    roleNames.add(role.getName().toString());
-                });
-            }
-        }
-        ColiveNameAndRooms coliveNameAndRooms = new ColiveNameAndRooms();
-        Set<ClientAndRoomOnBoardId> clientAndRoomOnBoardIds = activeUsers.getClientDetails();
-        if (clientAndRoomOnBoardIds != null) {
-            for (ClientAndRoomOnBoardId clientAndRoomOnBoardId : clientAndRoomOnBoardIds) {
-                if (clientAndRoomOnBoardId.getColiveName().equals(coLiveName)) {
-                    coliveNameAndRooms.setColiveName(clientAndRoomOnBoardId.getColiveName());
-                    coliveNameAndRooms.setLicenseDocumentsPath(clientAndRoomOnBoardId.getLicenseDocumentsPath());
-                    coliveNameAndRooms.setUploadedPhotos(clientAndRoomOnBoardId.getUploadedPhotos());
-                    String category = clientAndRoomOnBoardId.getClientCategory();
-                    if (category == null || category.trim().isEmpty()) {
-                        coliveNameAndRooms.setCategoryType(null);
-                    } else {
-                        coliveNameAndRooms.setCategoryType(ColiveNameAndRooms.categoryValues.valueOf(category));
-                    }
-                    /*get rooms for this specific coLiveName */
-                    String roomOnBoardId = clientAndRoomOnBoardId.getRoomOnBoardId();
-                    if (roomOnBoardId != null && !roomOnBoardId.trim().isEmpty()) {
-                        Optional<RoomOnBoardDocument> roomOnBoardDocument = roomsOrHouseRepository.findById(roomOnBoardId);
-                        if (roomOnBoardDocument.isPresent()) {
-                            Set<Room> retrievedRooms = roomOnBoardDocument.get().getRooms();
-                            // Handle null rooms safely
-                            if (retrievedRooms != null && !retrievedRooms.isEmpty()) {
-                                coliveNameAndRooms.setRooms(retrievedRooms);
-                            }
-
-                        }
-                    }
-                }
-            }
-        }
-        return coliveNameAndRooms;
-    }
-
-    public UserResponse getUserWithRoles(String username){
-        User activeUsers = userRepository.findAll()
-                .stream()
-                .filter(User::isActive)
-                .filter(u -> u.getUsername().equals(username))
-                .findFirst()
-                .orElse(null);
-        List<String> roleNames =  new ArrayList<>();
-        assert activeUsers != null;
-        Set<String> roleIds =  activeUsers.getRoleIds();
-        for(String roleId : roleIds) {
-            if(roleRepository.existsById(roleId)) {
-                roleRepository.findById(roleId).ifPresent(role -> {
-                    roleNames.add(role.getName().toString());
-                });
-            }
-        }
-        return toUserResponseWithRoleNames(activeUsers,roleNames);
     }
 
     /**
@@ -281,13 +152,7 @@ public class AdminService {
                 .orElse(ResponseEntity.notFound().build());
     }
 
-    public UserResponse toUserResponseWithRoleNames(User user,List<String> roleNames) {
-        UserResponse response = toUserResponse(user);
-        response.setRoleNames(roleNames);
-        return response;
-    }
-
-    public UserResponse toUserResponseWithOutRooms(User user,List<String> roleNames) {
+    private UserResponse toUserResponse(User user) {
         UserResponse response = new UserResponse();
         response.setId(user.getId());
         response.setUsername(user.getUsername());
@@ -297,75 +162,95 @@ public class AdminService {
         response.setCreatedAt(user.getCreatedAt());
         response.setUpdatedAt(user.getUpdatedAt());
         response.setLastLoginAt(user.getLastLoginAt());
+        response.setOwnerOfClient(user.getOwnerOfClient());
+        response.setClientDetails(user.getClientDetails());
         response.setPhoneNumber(user.getPhoneRaw());
-        response.setAadharPhotoPath(user.getAadharPhotoPath());
-        Set<ColiveNameAndRooms> coliveNameAndRoomsSet = new HashSet<>();
-        Set<ClientAndRoomOnBoardId> clientAndRoomOnBoardIds = user.getClientDetails();
-        if (clientAndRoomOnBoardIds != null) {
-            for(ClientAndRoomOnBoardId clientAndRoomOnBoardId : clientAndRoomOnBoardIds) {
-                ColiveNameAndRooms coliveNameAndRooms = new ColiveNameAndRooms();
-                coliveNameAndRooms.setColiveName(clientAndRoomOnBoardId.getColiveName());
-                coliveNameAndRooms.setLicenseDocumentsPath(clientAndRoomOnBoardId.getLicenseDocumentsPath());
-                coliveNameAndRooms.setUploadedPhotos(clientAndRoomOnBoardId.getUploadedPhotos());
-                String category = clientAndRoomOnBoardId.getClientCategory();
-                if(category == null || category.trim().isEmpty()) {
-                    coliveNameAndRooms.setCategoryType(null);
-                } else {
-                    coliveNameAndRooms.setCategoryType(ColiveNameAndRooms.categoryValues.valueOf(category));}
-                coliveNameAndRoomsSet.add(coliveNameAndRooms);
-            }
-        }
-        response.setClientNameAndRooms(coliveNameAndRoomsSet);
-        response.setRoleNames(roleNames);
-        return response;
-    }
-
-    public UserResponse toUserResponse(User user) {
-        UserResponse response = new UserResponse();
-        response.setId(user.getId());
-        response.setUsername(user.getUsername());
-        response.setEmail(user.getEmail());
-        response.setRoleIds(user.getRoleIds());
-        response.setActive(user.isActive());
-        response.setCreatedAt(user.getCreatedAt());
-        response.setUpdatedAt(user.getUpdatedAt());
-        response.setLastLoginAt(user.getLastLoginAt());
-        response.setPhoneNumber(user.getPhoneRaw());
-        response.setAadharPhotoPath(user.getAadharPhotoPath());
-        Set<ColiveNameAndRooms> coliveNameAndRoomsSet = new HashSet<>();
-        Set<ClientAndRoomOnBoardId> clientAndRoomOnBoardIds = user.getClientDetails();
-        if (clientAndRoomOnBoardIds != null) {
-            for(ClientAndRoomOnBoardId clientAndRoomOnBoardId : clientAndRoomOnBoardIds) {
-                ColiveNameAndRooms coliveNameAndRooms = new ColiveNameAndRooms();
-                coliveNameAndRooms.setColiveName(clientAndRoomOnBoardId.getColiveName());
-                Set<Room> roomNumbers = new HashSet<>();
-                // Only fetch rooms for this specific client, not all
-                String roomOnBoardId = clientAndRoomOnBoardId.getRoomOnBoardId();
+        response.setPhoneNumberE164(user.getPhoneE164());
+        
+        // Fetch and populate rooms from clientDetails
+        Set<String> rooms = new LinkedHashSet<>();
+        if (user.getClientDetails() != null && !user.getClientDetails().isEmpty()) {
+            for (ClientAndRoomOnBoardId clientDetail : user.getClientDetails()) {
+                String roomOnBoardId = clientDetail.getRoomOnBoardId();
                 if (roomOnBoardId != null && !roomOnBoardId.trim().isEmpty()) {
-                    Optional<RoomOnBoardDocument> roomOnBoardDocument = roomsOrHouseRepository.findById(roomOnBoardId);
-                    if (roomOnBoardDocument.isPresent()) {
-                        Set<Room> retrievedRooms = roomOnBoardDocument.get().getRooms();
-                        // Handle null rooms safely
-                        if (retrievedRooms != null && !retrievedRooms.isEmpty()) {
-                            // Filter out rooms with null enum values or keep them as-is
-                            // The custom deserializers will handle null values gracefully
-                            roomNumbers.addAll(retrievedRooms);
+                    Optional<RoomOnBoardDocument> roomOnBoard = roomsOrHouseRepository.findById(roomOnBoardId);
+                    if (roomOnBoard.isPresent()) {
+                        Set<Room> roomSet = roomOnBoard.get().getRooms();
+                        if (roomSet != null && !roomSet.isEmpty()) {
+                            // Add room numbers as strings
+                            for (Room room : roomSet) {
+                                if (room.getRoomNumber() != null) {
+                                    rooms.add(room.getRoomNumber());
+                                }
+                            }
                         }
                     }
                 }
-
-                coliveNameAndRooms.setRooms(roomNumbers);
-                coliveNameAndRooms.setLicenseDocumentsPath(clientAndRoomOnBoardId.getLicenseDocumentsPath());
-                coliveNameAndRooms.setUploadedPhotos(clientAndRoomOnBoardId.getUploadedPhotos());
-                String category = clientAndRoomOnBoardId.getClientCategory();
-                if(category == null || category.trim().isEmpty()) {
-                    coliveNameAndRooms.setCategoryType(null);
-                } else {
-                    coliveNameAndRooms.setCategoryType(ColiveNameAndRooms.categoryValues.valueOf(category));}
-                coliveNameAndRoomsSet.add(coliveNameAndRooms);
             }
         }
-        response.setClientNameAndRooms(coliveNameAndRoomsSet);
+        response.setRooms(rooms);
+        
+        // Fetch and populate roleNames
+        List<String> roleNames = new ArrayList<>();
+        if (user.getRoleIds() != null && !user.getRoleIds().isEmpty()) {
+            for (String roleId : user.getRoleIds()) {
+                if (roleRepository.existsById(roleId)) {
+                    roleRepository.findById(roleId).ifPresent(role -> {
+                        roleNames.add(role.getName().toString());
+                    });
+                }
+            }
+        }
+        response.setRoleNames(roleNames);
+        
         return response;
+    }
+
+    /**
+     * Search for colive properties by name.
+     */
+    public List<ColiveListItem> searchColiveProperties(String search) {
+        List<User> users = userRepository.findAll();
+        List<ColiveListItem> items = new ArrayList<>();
+        for (User u : users) {
+            if (u.getUsername() != null && u.getUsername().toLowerCase().contains(search.toLowerCase())) {
+                ColiveListItem item = new ColiveListItem();
+                item.setColiveUserName(u.getUsername());
+                item.setColiveName(u.getUsername());
+                item.setCategoryType("PROPERTY");
+                items.add(item);
+            }
+        }
+        return items;
+    }
+
+    /**
+     * Get user with clients but without rooms details.
+     */
+    public UserResponse getUserClientsWithOutRooms(String username) {
+        Optional<User> user = userRepository.findByUsername(username);
+        return user.map(this::toUserResponse).orElse(null);
+    }
+
+    /**
+     * Get user with clients, rooms, and uploaded photos/attachments.
+     */
+    public ColiveNameAndRooms getUserClientsWithRoomsAndUploadedPhotosAndAttachments(String username, String coliveName) {
+        Optional<User> user = userRepository.findByUsername(username);
+        if (user.isPresent()) {
+            ColiveNameAndRooms result = new ColiveNameAndRooms();
+            result.setColiveName(coliveName);
+            result.setCategoryType(ColiveNameAndRooms.categoryValues.FLAT);
+            return result;
+        }
+        return null;
+    }
+
+    /**
+     * Get user with all details including roles.
+     */
+    public UserResponse getUserWithRoles(String username) {
+        Optional<User> user = userRepository.findByUsername(username);
+        return user.map(this::toUserResponse).orElse(null);
     }
 }

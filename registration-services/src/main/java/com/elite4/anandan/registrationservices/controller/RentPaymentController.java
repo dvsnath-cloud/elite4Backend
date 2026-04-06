@@ -1,0 +1,322 @@
+package com.elite4.anandan.registrationservices.controller;
+
+import com.elite4.anandan.registrationservices.dto.*;
+import com.elite4.anandan.registrationservices.service.RentPaymentService;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.time.LocalDate;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+@RestController
+@RequestMapping("/rentpayments")
+@RequiredArgsConstructor
+@Slf4j
+@CrossOrigin(origins = "*", allowedHeaders = "*")
+public class RentPaymentController {
+
+    private final RentPaymentService rentPaymentService;
+
+    /**
+     * Record cash rent payment
+     * POST /rentpayments/cash
+     */
+    @PostMapping("/cash")
+    public ResponseEntity<?> recordCashPayment(@RequestBody CashPaymentRequest request) {
+        try {
+            log.info("POST /rentpayments/cash - Recording cash payment for tenant: {}", request.getTenantId());
+            
+            String username = "system"; // In real app, get from JWT token
+            PaymentTransactionResponse response = rentPaymentService.recordCashPayment(request, username);
+            
+            Map<String, Object> result = new HashMap<>();
+            result.put("success", true);
+            result.put("message", "Cash payment recorded successfully");
+            result.put("data", response);
+            
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            log.error("Error recording cash payment", e);
+            Map<String, Object> error = new HashMap<>();
+            error.put("success", false);
+            error.put("message", e.getMessage());
+            return ResponseEntity.badRequest().body(error);
+        }
+    }
+
+    /**
+     * Record online rent payment
+     * POST /rentpayments/online
+     */
+    @PostMapping("/online")
+    public ResponseEntity<?> recordOnlinePayment(@RequestBody OnlinePaymentRequest request) {
+        try {
+            log.info("POST /rentpayments/online - Recording online payment for tenant: {}", request.getTenantId());
+            
+            String username = "system"; // In real app, get from JWT token
+            PaymentTransactionResponse response = rentPaymentService.recordOnlinePayment(request, username);
+            
+            Map<String, Object> result = new HashMap<>();
+            result.put("success", true);
+            result.put("message", "Online payment recorded successfully");
+            result.put("data", response);
+            
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            log.error("Error recording online payment", e);
+            Map<String, Object> error = new HashMap<>();
+            error.put("success", false);
+            error.put("message", e.getMessage());
+            return ResponseEntity.badRequest().body(error);
+        }
+    }
+
+    /**
+     * Get tenant payment history for last 12 months
+     * GET /rentpayments/tenant/{tenantId}/history
+     */
+    @GetMapping("/tenant/{tenantId}/history")
+    public ResponseEntity<?> getTenantPaymentHistory(@PathVariable String tenantId) {
+        try {
+            log.info("GET /rentpayments/tenant/{}/history", tenantId);
+            
+            List<TenantPaymentHistoryItem> history = rentPaymentService.getTenantPaymentHistory(tenantId);
+            
+            Map<String, Object> result = new HashMap<>();
+            result.put("success", true);
+            result.put("message", "Payment history retrieved successfully");
+            result.put("totalRecords", history.size());
+            result.put("data", history);
+            
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            log.error("Error fetching tenant payment history", e);
+            Map<String, Object> error = new HashMap<>();
+            error.put("success", false);
+            error.put("message", e.getMessage());
+            return ResponseEntity.badRequest().body(error);
+        }
+    }
+
+    /**
+     * Get owner's payment dashboard for current month
+     * GET /rentpayments/owner/{username}/dashboard
+     */
+    @GetMapping("/owner/{username}/dashboard")
+    public ResponseEntity<?> getOwnerPaymentDashboard(
+            @PathVariable String username,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate month) {
+        try {
+            log.info("GET /rentpayments/owner/{}/dashboard", username);
+            
+            LocalDate queryMonth = month != null ? month : LocalDate.now();
+            OwnerPaymentDashboard dashboard = rentPaymentService.getOwnerPaymentDashboard(username, queryMonth);
+            
+            Map<String, Object> result = new HashMap<>();
+            result.put("success", true);
+            result.put("message", "Payment dashboard retrieved successfully");
+            result.put("data", dashboard);
+            
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            log.error("Error fetching owner payment dashboard", e);
+            Map<String, Object> error = new HashMap<>();
+            error.put("success", false);
+            error.put("message", e.getMessage());
+            return ResponseEntity.badRequest().body(error);
+        }
+    }
+
+    /**
+     * Get owner's payment history for last 6 months
+     * GET /rentpayments/owner/{username}/history
+     */
+    @GetMapping("/owner/{username}/history")
+    public ResponseEntity<?> getOwnerPaymentHistory(@PathVariable String username) {
+        try {
+            log.info("GET /rentpayments/owner/{}/history", username);
+            
+            List<OwnerPaymentDashboard> history = rentPaymentService.getOwnerPaymentHistory(username);
+            
+            Map<String, Object> result = new HashMap<>();
+            result.put("success", true);
+            result.put("message", "Payment history retrieved successfully");
+            result.put("totalMonths", history.size());
+            result.put("data", history);
+            
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            log.error("Error fetching owner payment history", e);
+            Map<String, Object> error = new HashMap<>();
+            error.put("success", false);
+            error.put("message", e.getMessage());
+            return ResponseEntity.badRequest().body(error);
+        }
+    }
+
+    /**
+     * Get owner's bank details (for tenant to know where to transfer)
+     * GET /rentpayments/owner/{username}/bankdetails
+     */
+    @GetMapping("/owner/{username}/bankdetails")
+    public ResponseEntity<?> getOwnerBankDetails(@PathVariable String username) {
+        try {
+            log.info("GET /rentpayments/owner/{}/bankdetails", username);
+            
+            // This will be implemented in a separate service to fetch from User document
+            Map<String, Object> result = new HashMap<>();
+            result.put("success", true);
+            result.put("message", "Bank details retrieved successfully");
+            // Bank details will be populated from User document
+            
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            log.error("Error fetching owner bank details", e);
+            Map<String, Object> error = new HashMap<>();
+            error.put("success", false);
+            error.put("message", e.getMessage());
+            return ResponseEntity.badRequest().body(error);
+        }
+    }
+
+    /**
+     * (Requirement #3) Record prorated/partial month cash payment
+     * POST /rentpayments/prorated-cash
+     */
+    @PostMapping("/prorated-cash")
+    public ResponseEntity<?> recordProratedCashPayment(@RequestBody ProratedCashPaymentRequest request) {
+        try {
+            log.info("POST /rentpayments/prorated-cash - Recording prorated payment for tenant: {}", request.getTenantId());
+            
+            String username = "system";
+            PaymentTransactionResponse response = rentPaymentService.recordProratedCashPayment(request, username);
+            
+            Map<String, Object> result = new HashMap<>();
+            result.put("success", true);
+            result.put("message", "Prorated payment recorded successfully (awaiting moderator approval)");
+            result.put("data", response);
+            
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            log.error("Error recording prorated payment", e);
+            Map<String, Object> error = new HashMap<>();
+            error.put("success", false);
+            error.put("message", e.getMessage());
+            return ResponseEntity.badRequest().body(error);
+        }
+    }
+
+    /**
+     * (Requirement #2) Get pending cash payment approvals for moderator
+     * GET /rentpayments/owner/{username}/pending-approvals
+     */
+    @GetMapping("/owner/{username}/pending-approvals")
+    public ResponseEntity<?> getPendingPaymentApprovals(@PathVariable String username) {
+        try {
+            log.info("GET /rentpayments/owner/{}/pending-approvals", username);
+            
+            List<PendingPaymentApprovalItem> approvals = rentPaymentService.getPendingPaymentApprovals(username);
+            
+            Map<String, Object> result = new HashMap<>();
+            result.put("success", true);
+            result.put("message", "Pending approvals retrieved successfully");
+            result.put("totalPending", approvals.size());
+            result.put("data", approvals);
+            
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            log.error("Error fetching pending approvals", e);
+            Map<String, Object> error = new HashMap<>();
+            error.put("success", false);
+            error.put("message", e.getMessage());
+            return ResponseEntity.badRequest().body(error);
+        }
+    }
+
+    /**
+     * (Requirement #2) Approve or reject a cash payment
+     * POST /rentpayments/approve-reject
+     */
+    @PostMapping("/approve-reject")
+    public ResponseEntity<?> approveRejectPayment(@RequestBody PaymentApprovalRequest request) {
+        try {
+            log.info("POST /rentpayments/approve-reject - Processing approval for transaction: {}", request.getTransactionId());
+            
+            String moderatorUsername = "system";  // In real app, get from JWT token
+            PaymentTransactionResponse response = rentPaymentService.approveRejectPayment(request, moderatorUsername);
+            
+            Map<String, Object> result = new HashMap<>();
+            result.put("success", true);
+            result.put("message", request.getApprove() ? "Payment approved successfully" : "Payment rejected successfully");
+            result.put("data", response);
+            
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            log.error("Error processing payment approval", e);
+            Map<String, Object> error = new HashMap<>();
+            error.put("success", false);
+            error.put("message", e.getMessage());
+            return ResponseEntity.badRequest().body(error);
+        }
+    }
+
+    /**
+     * (Requirement #4) Get tenant's outstanding balance for all months and properties
+     * GET /rentpayments/tenant/{tenantId}/outstanding-balance
+     */
+    @GetMapping("/tenant/{tenantId}/outstanding-balance")
+    public ResponseEntity<?> getTenantOutstandingBalance(@PathVariable String tenantId) {
+        try {
+            log.info("GET /rentpayments/tenant/{}/outstanding-balance", tenantId);
+            
+            TenantOutstandingBalance balance = rentPaymentService.getTenantOutstandingBalance(tenantId);
+            
+            Map<String, Object> result = new HashMap<>();
+            result.put("success", true);
+            result.put("message", "Outstanding balance retrieved successfully");
+            result.put("data", balance);
+            
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            log.error("Error fetching outstanding balance", e);
+            Map<String, Object> error = new HashMap<>();
+            error.put("success", false);
+            error.put("message", e.getMessage());
+            return ResponseEntity.badRequest().body(error);
+        }
+    }
+
+    /**
+     * (Requirement #5) Get moderator's collection report up to specific date and time
+     * GET /rentpayments/owner/{username}/collection-report
+     */
+    @GetMapping("/owner/{username}/collection-report")
+    public ResponseEntity<?> getModeratorCollectionReport(
+            @PathVariable String username,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) java.time.LocalDateTime upToDateTime) {
+        try {
+            log.info("GET /rentpayments/owner/{}/collection-report", username);
+            
+            java.time.LocalDateTime reportDateTime = upToDateTime != null ? upToDateTime : java.time.LocalDateTime.now();
+            ModeratorCollectionReport report = rentPaymentService.getModeratorCollectionReport(username, reportDateTime);
+            
+            Map<String, Object> result = new HashMap<>();
+            result.put("success", true);
+            result.put("message", "Collection report generated successfully");
+            result.put("data", report);
+            
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            log.error("Error generating collection report", e);
+            Map<String, Object> error = new HashMap<>();
+            error.put("success", false);
+            error.put("message", e.getMessage());
+            return ResponseEntity.badRequest().body(error);
+        }
+    }
+}

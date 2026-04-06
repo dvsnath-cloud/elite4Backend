@@ -59,16 +59,16 @@ public class PaymentController {
             log.info("POST /payments/order → Razorpay order created: id={}, amount={}, status={}",
                     order.get("id"), order.get("amount"), order.get("status"));
 
-            paymentService.notifyPaymentInitiated(request, order);
+            //paymentService.notifyPaymentInitiated(request, order);
 
             PaymentResponse resp = new PaymentResponse();
-            resp.setOrderId(order.get("id"));
-            resp.setAmount(order.get("amount"));
-            resp.setCurrency(order.get("currency"));
-            resp.setStatus(order.get("status"));
+            resp.setOrderId(objectToString(order.get("id")));
+            resp.setAmount(objectToInteger(order.get("amount")));
+            resp.setCurrency(objectToString(order.get("currency")));
+            resp.setStatus(objectToString(order.get("status")));
             resp.setKeyId(paymentService.getKeyId());
             resp.setCompanyName(paymentService.getCompanyName());
-            resp.setReceipt(String.valueOf(order.get("receipt")));
+            resp.setReceipt(objectToString(order.get("receipt")));
             resp.setRegistrationId(request.getRegistrationId());
             resp.setTenantName(request.getTenantName());
             resp.setPaymentFor(request.getPaymentFor());
@@ -109,7 +109,7 @@ public class PaymentController {
             }
 
             log.info("POST /payments/verify → signature verified for orderId={}", request.getRazorpayOrderId());
-            paymentService.notifyPaymentSuccess(request);
+            //paymentService.notifyPaymentSuccess(request);
 
             PaymentResponse response = new PaymentResponse();
             response.setOrderId(request.getRazorpayOrderId());
@@ -130,5 +130,31 @@ public class PaymentController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("message", e.getMessage() == null ? "Failed to verify payment." : e.getMessage()));
         }
+    }
+
+    private String objectToString(Object obj) {
+        if (obj == null) {
+            return null;
+        }
+        if (obj instanceof String) {
+            return (String) obj;
+        }
+        if (obj instanceof char[]) {
+            return new String((char[]) obj);
+        }
+        return obj.toString();
+    }
+
+    private Integer objectToInteger(Object obj) {
+        if (obj == null) {
+            return null;
+        }
+        if (obj instanceof Number) {
+            return ((Number) obj).intValue();
+        }
+        if (obj instanceof String) {
+            return Integer.parseInt((String) obj);
+        }
+        return null;
     }
 }
