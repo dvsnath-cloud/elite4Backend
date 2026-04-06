@@ -54,8 +54,9 @@ public class TransferController {
     @GetMapping("/pending/{coliveUserName}")
     @PreAuthorize("hasAnyRole('ADMIN','MODERATOR')")
     public ResponseEntity<List<TransferRequestDocument>> getPendingForModerator(
-            @PathVariable String coliveUserName) {
-        return ResponseEntity.ok(transferService.getPendingTransfersForModerator(coliveUserName));
+            @PathVariable String coliveUserName,
+            @RequestParam(required = false) String coliveName) {
+        return ResponseEntity.ok(transferService.getPendingTransfersForModerator(coliveUserName, coliveName));
     }
 
     /**

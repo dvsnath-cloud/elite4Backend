@@ -29,6 +29,8 @@ public interface RegistrationRepository extends MongoRepository<RegistrationDocu
     List<RegistrationDocument> findBycheckInDate(String checkInDate);   
     List<RegistrationDocument> findBycheckOutDate(String checkOutDate);
     List<RegistrationDocument> findByOccupied(Registration.roomOccupied occupied);
+    List<RegistrationDocument> findByOccupiedAndColiveUserNameAndColiveName(Registration.roomOccupied occupied, String coliveUserName, String coliveName);
+    List<RegistrationDocument> findByOccupiedAndColiveUserName(Registration.roomOccupied occupied, String coliveUserName);
     List<RegistrationDocument> findByFnameAndColiveNameAndContactNo(String fname, String coliveName, String contactNo);
     List<RegistrationDocument> findByColiveNameAndColiveUserNameAndRoomForRegistrationRoomNumber( String coliveName, String coliveUserName,String roomNumber);
     List<RegistrationDocument> findByColiveUserNameAndColiveNameAndRoomForRegistrationHouseNumber(String fname, String coliveName, String houseNumber);

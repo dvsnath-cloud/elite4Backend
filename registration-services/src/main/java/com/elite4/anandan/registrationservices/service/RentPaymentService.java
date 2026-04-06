@@ -80,6 +80,7 @@ public class RentPaymentService {
         transaction.setCreatedAt(LocalDateTime.now());
         transaction.setUpdatedAt(LocalDateTime.now());
         transaction.setUpdatedBy(currentUsername);
+        transaction.setCollectionDateTime(LocalDateTime.now());
 
         RentPaymentTransaction saved = paymentRepository.save(transaction);
         log.info("Cash payment recorded successfully: {}", saved.getId());
@@ -142,6 +143,7 @@ public class RentPaymentService {
         transaction.setCreatedAt(LocalDateTime.now());
         transaction.setUpdatedAt(LocalDateTime.now());
         transaction.setUpdatedBy(currentUsername);
+        transaction.setCollectionDateTime(LocalDateTime.now());
 
         RentPaymentTransaction saved = paymentRepository.save(transaction);
         log.info("Online payment recorded successfully: {}", saved.getId());
@@ -380,6 +382,7 @@ public class RentPaymentService {
         transaction.setCreatedBy(currentUsername);
         transaction.setCreatedAt(LocalDateTime.now());
         transaction.setUpdatedAt(LocalDateTime.now());
+        transaction.setCollectionDateTime(LocalDateTime.now());
 
         RentPaymentTransaction saved = paymentRepository.save(transaction);
         log.info("Prorated payment recorded: {}", saved.getId());
@@ -390,12 +393,19 @@ public class RentPaymentService {
     /**
      * (Requirement #2) Get pending cash payment approvals for a moderator
      */
-    public List<PendingPaymentApprovalItem> getPendingPaymentApprovals(String coliveOwnerUsername) {
-        log.info("Fetching pending payment approvals for owner: {}", coliveOwnerUsername);
+    public List<PendingPaymentApprovalItem> getPendingPaymentApprovals(String coliveOwnerUsername, String coliveName) {
+        log.info("Fetching pending payment approvals for owner: {}, coliveName: {}", coliveOwnerUsername, coliveName);
 
-        List<RentPaymentTransaction> pendingApprovals = paymentRepository
-            .findByColiveOwnerUsernameAndApprovalStatus(coliveOwnerUsername, 
-                RentPaymentTransaction.ApprovalStatus.PENDING_APPROVAL);
+        List<RentPaymentTransaction> pendingApprovals;
+        if (coliveName != null && !coliveName.isBlank()) {
+            pendingApprovals = paymentRepository
+                .findByColiveOwnerUsernameAndColiveNameAndApprovalStatus(coliveOwnerUsername, coliveName,
+                    RentPaymentTransaction.ApprovalStatus.PENDING_APPROVAL);
+        } else {
+            pendingApprovals = paymentRepository
+                .findByColiveOwnerUsernameAndApprovalStatus(coliveOwnerUsername, 
+                    RentPaymentTransaction.ApprovalStatus.PENDING_APPROVAL);
+        }
 
         return pendingApprovals.stream()
             .sorted(Comparator.comparing(RentPaymentTransaction::getCreatedAt).reversed())
@@ -507,16 +517,22 @@ public class RentPaymentService {
     /**
      * (Requirement #5) Get moderator's collection details/report up to current date and time
      */
-    public ModeratorCollectionReport getModeratorCollectionReport(String coliveOwnerUsername, LocalDateTime upToDateTime) {
-        log.info("Generating collection report for owner: {} up to: {}", coliveOwnerUsername, upToDateTime);
+    public ModeratorCollectionReport getModeratorCollectionReport(String coliveOwnerUsername, LocalDateTime upToDateTime, String coliveName) {
+        log.info("Generating collection report for owner: {} coliveName: {} up to: {}", coliveOwnerUsername, coliveName, upToDateTime);
 
         LocalDate today = upToDateTime.toLocalDate();
         LocalDateTime startOfDay = today.atStartOfDay();
         LocalDateTime endOfDay = today.atTime(23, 59, 59);
 
-        // Get all transactions for this coLive up to the given datetime
-        List<RentPaymentTransaction> allTransactions = paymentRepository
-            .findByColiveOwnerUsernameAndCollectionDateTimeIsBefore(coliveOwnerUsername, upToDateTime);
+        // Get all transactions up to the given datetime, optionally filtered by coliveName
+        List<RentPaymentTransaction> allTransactions;
+        if (coliveName != null && !coliveName.isBlank()) {
+            allTransactions = paymentRepository
+                .findByColiveOwnerUsernameAndColiveNameAndCreatedAtBefore(coliveOwnerUsername, coliveName, upToDateTime);
+        } else {
+            allTransactions = paymentRepository
+                .findByColiveOwnerUsernameAndCreatedAtBefore(coliveOwnerUsername, upToDateTime);
+        }
 
         // Separate by status
         List<RentPaymentTransaction> approvedPayments = allTransactions.stream()
@@ -551,6 +567,7 @@ public class RentPaymentService {
                 .transactionId(t.getId())
                 .tenantName(t.getTenantName())
                 .roomNumber(t.getRoomNumber())
+                .coliveName(t.getColiveName())
                 .amount(t.getPaidAmount())
                 .paymentType(t.getPaymentType().toString())
                 .paymentMethod(t.getPaymentMethod())
@@ -571,6 +588,7 @@ public class RentPaymentService {
         return ModeratorCollectionReport.builder()
             .reportGeneratedAt(LocalDateTime.now())
             .moderatorUsername(coliveOwnerUsername)
+            .coliveName(coliveName)
             .period(period)
             .totalTransactionsProcessed(approvedPayments.size())
             .totalCashCollected(totalCash)
@@ -581,5 +599,143 @@ public class RentPaymentService {
             .totalRejectedPayments(rejectedPayments.size())
             .transactions(transactionDetails)
             .build();
+    }
+
+    /**
+     * Consolidated payment summary for a tenant — single API call replaces
+     * multiple frontend calls and all client-side computation.
+     */
+    public TenantPaymentSummary getTenantPaymentSummary(String tenantId) {
+        log.info("Building consolidated payment summary for tenant: {}", tenantId);
+
+        // 1. Fetch tenant registration
+        RegistrationDocument registration = registrationRepository.findById(tenantId)
+                .orElseThrow(() -> new IllegalArgumentException("Tenant not found with ID: " + tenantId));
+
+        double roomRent = registration.getRoomRent();
+        double advanceAmount = registration.getAdvanceAmount();
+        LocalDate checkInDate = registration.getCheckInDate() != null
+                ? registration.getCheckInDate().toInstant().atZone(java.time.ZoneId.systemDefault()).toLocalDate()
+                : null;
+        String roomNumber = registration.getRoomForRegistration() != null
+                ? registration.getRoomForRegistration().getRoomNumber() : "N/A";
+
+        // 2. Fetch all payments for this tenant (single DB call)
+        List<RentPaymentTransaction> allPayments = paymentRepository.findByTenantId(tenantId);
+
+        // 3. Current month payment check
+        LocalDate currentMonthStart = LocalDate.now().withDayOfMonth(1);
+        TenantPaymentHistoryItem currentMonthPayment = allPayments.stream()
+                .filter(p -> p.getRentMonth() != null && p.getRentMonth().equals(currentMonthStart))
+                .filter(p -> p.getStatus() == RentPaymentTransaction.PaymentStatus.COMPLETED
+                        || p.getStatus() == RentPaymentTransaction.PaymentStatus.PENDING_APPROVAL)
+                .max(Comparator.comparing(RentPaymentTransaction::getUpdatedAt))
+                .map(TenantPaymentHistoryItem::from)
+                .orElse(null);
+
+        boolean currentMonthPaid = currentMonthPayment != null;
+
+        // 4. Payment history — last 6 months, sorted newest first
+        LocalDate sixMonthsAgo = LocalDate.now().minusMonths(6);
+        List<TenantPaymentHistoryItem> paymentHistory = allPayments.stream()
+                .filter(p -> p.getRentMonth() != null && !p.getRentMonth().isBefore(sixMonthsAgo))
+                .sorted(Comparator.comparing(RentPaymentTransaction::getRentMonth).reversed())
+                .limit(6)
+                .map(TenantPaymentHistoryItem::from)
+                .collect(Collectors.toList());
+
+        // 5. First-time payment detection
+        boolean isFirstTime = allPayments.isEmpty() && currentMonthPayment == null;
+
+        // 6. Prorated info (only for first-time tenants joined after 1st)
+        TenantPaymentSummary.ProratedInfo proratedInfo = null;
+        if (isFirstTime && checkInDate != null && checkInDate.getDayOfMonth() > 1) {
+            LocalDate now = LocalDate.now();
+            int joinDay = checkInDate.getDayOfMonth();
+
+            // Use join month if same as current, otherwise use current month
+            int year = (checkInDate.getMonth() == now.getMonth() && checkInDate.getYear() == now.getYear())
+                    ? checkInDate.getYear() : now.getYear();
+            int monthValue = (checkInDate.getMonth() == now.getMonth() && checkInDate.getYear() == now.getYear())
+                    ? checkInDate.getMonthValue() : now.getMonthValue();
+
+            YearMonth ym = YearMonth.of(year, monthValue);
+            int daysInMonth = ym.lengthOfMonth();
+            int remainingDays = daysInMonth - joinDay + 1;
+            double proratedAmount = Math.round((roomRent / daysInMonth) * remainingDays);
+
+            String ordJoin = getOrdinal(joinDay);
+            String monthName = ym.getMonth().toString().substring(0, 3);
+            String ordEnd = getOrdinal(daysInMonth);
+
+            String cycleLabel1st = joinDay + ordJoin + " " + monthName + " → " + daysInMonth + ordEnd + " " + monthName + " (then 1st to 1st)";
+            String cycleLabelJoin = joinDay + ordJoin + " of every month (" + joinDay + ordJoin + " → " + joinDay + ordJoin + ")";
+
+            proratedInfo = TenantPaymentSummary.ProratedInfo.builder()
+                    .startDate(LocalDate.of(year, monthValue, joinDay))
+                    .endDate(LocalDate.of(year, monthValue, daysInMonth))
+                    .totalDaysInMonth(daysInMonth)
+                    .remainingDays(remainingDays)
+                    .proratedAmount(proratedAmount)
+                    .fullRent(roomRent)
+                    .cycleLabel1st(cycleLabel1st)
+                    .cycleLabelJoin(cycleLabelJoin)
+                    .build();
+        }
+
+        // 7. Outstanding balance
+        List<RentPaymentTransaction.PaymentStatus> unpaidStatuses = Arrays.asList(
+                RentPaymentTransaction.PaymentStatus.PENDING,
+                RentPaymentTransaction.PaymentStatus.PARTIAL,
+                RentPaymentTransaction.PaymentStatus.OVERDUE);
+
+        List<TenantOutstandingBalance.OutstandingMonth> outstandingMonths = allPayments.stream()
+                .filter(p -> unpaidStatuses.contains(p.getStatus()))
+                .map(p -> {
+                    long daysOverdue = java.time.temporal.ChronoUnit.DAYS.between(p.getDueDate(), LocalDate.now());
+                    return TenantOutstandingBalance.OutstandingMonth.builder()
+                            .rentMonth(p.getRentMonth() != null ? p.getRentMonth().toString() : "")
+                            .coliveName(p.getColiveName())
+                            .roomNumber(p.getRoomNumber())
+                            .expectedAmount(p.getRentAmount())
+                            .paidAmount(p.getPaidAmount())
+                            .outstandingAmount(p.getRemainingAmount())
+                            .status(p.getStatus().toString())
+                            .daysOverdue(Math.max(daysOverdue, 0))
+                            .build();
+                })
+                .collect(Collectors.toList());
+
+        double totalOutstanding = outstandingMonths.stream()
+                .mapToDouble(TenantOutstandingBalance.OutstandingMonth::getOutstandingAmount)
+                .sum();
+
+        double totalAdvanceUsed = advanceAmount > 0 ? advanceAmount : 0;
+
+        // 8. Build consolidated response
+        return TenantPaymentSummary.builder()
+                .tenantId(tenantId)
+                .tenantName(registration.getFname() + " " + registration.getLname())
+                .coliveName(registration.getColiveName())
+                .roomNumber(roomNumber)
+                .roomRent(roomRent)
+                .advanceAmount(advanceAmount)
+                .checkInDate(checkInDate)
+                .currentMonthPaid(currentMonthPaid)
+                .currentMonthPayment(currentMonthPayment)
+                .firstTimePayment(isFirstTime)
+                .proratedInfo(proratedInfo)
+                .totalOutstanding(totalOutstanding)
+                .totalAdvanceUsed(totalAdvanceUsed)
+                .outstandingMonths(outstandingMonths)
+                .paymentHistory(paymentHistory)
+                .build();
+    }
+
+    private String getOrdinal(int n) {
+        String[] suffixes = {"th", "st", "nd", "rd"};
+        int v = n % 100;
+        String suffix = (v >= 11 && v <= 13) ? "th" : suffixes[Math.min(v % 10, 3)];
+        return suffix;
     }
 }

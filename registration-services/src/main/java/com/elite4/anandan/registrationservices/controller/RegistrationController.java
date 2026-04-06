@@ -121,8 +121,10 @@ public class RegistrationController {
 
     @GetMapping("/user/getVacatedRoomsAndMembers")
     @PreAuthorize("hasAnyRole('ADMIN','MODERATOR')")
-    public List<RegistrationWithRoomRequest> findRoomsWithVacated() {
-        return registrationService.findRoomsWithVacatedaStatus();
+    public List<RegistrationWithRoomRequest> findRoomsWithVacated(
+            @RequestParam(required = false) String coliveUserName,
+            @RequestParam(required = false) String coliveName) {
+        return registrationService.findRoomsWithVacatedaStatus(coliveUserName, coliveName);
     }
 
     /*@GetMapping("/user/room/{roomType}")

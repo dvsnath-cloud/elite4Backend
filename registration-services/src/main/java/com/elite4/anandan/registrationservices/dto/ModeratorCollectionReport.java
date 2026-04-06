@@ -43,6 +43,7 @@ public class ModeratorCollectionReport {
         private String transactionId;
         private String tenantName;
         private String roomNumber;
+        private String coliveName;
         private double amount;
         private String paymentType;             // ONLINE, CASH
         private String paymentMethod;           // UPI, CREDIT_CARD, CASH, etc.

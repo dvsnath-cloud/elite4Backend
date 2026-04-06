@@ -28,4 +28,10 @@ public interface TransferRequestRepository extends MongoRepository<TransferReque
             TransferStatus status, String toColiveUserName);
 
     List<TransferRequestDocument> findByStatusIn(List<TransferStatus> statuses);
+
+    List<TransferRequestDocument> findByStatusAndFromColiveUserNameAndFromColiveName(
+            TransferStatus status, String fromColiveUserName, String fromColiveName);
+
+    List<TransferRequestDocument> findByStatusAndToColiveUserNameAndToColiveName(
+            TransferStatus status, String toColiveUserName, String toColiveName);
 }

@@ -106,9 +106,24 @@ public interface RentPaymentTransactionRepository extends MongoRepository<RentPa
     List<RentPaymentTransaction> findByColiveOwnerUsernameAndCollectionDateTimeIsBefore(String coliveOwnerUsername, LocalDateTime dateTime);
 
     /**
+     * Find all transactions for a coLive created before a specific date-time (fallback for null collectionDateTime)
+     */
+    List<RentPaymentTransaction> findByColiveOwnerUsernameAndCreatedAtBefore(String coliveOwnerUsername, LocalDateTime dateTime);
+
+    /**
+     * Find all transactions for a specific coLive property created before a specific date-time
+     */
+    List<RentPaymentTransaction> findByColiveOwnerUsernameAndColiveNameAndCreatedAtBefore(String coliveOwnerUsername, String coliveName, LocalDateTime dateTime);
+
+    /**
      * Find transactions by approval status and coLive
      */
     List<RentPaymentTransaction> findByColiveNameAndApprovalStatus(String coliveName, RentPaymentTransaction.ApprovalStatus approvalStatus);
+
+    /**
+     * Find pending approvals for a coLive owner filtered by coliveName
+     */
+    List<RentPaymentTransaction> findByColiveOwnerUsernameAndColiveNameAndApprovalStatus(String coliveOwnerUsername, String coliveName, RentPaymentTransaction.ApprovalStatus approvalStatus);
 
     /**
      * Find all unpaid transactions for a tenant

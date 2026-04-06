@@ -169,15 +169,20 @@ public class AdminService {
         
         // Fetch and populate rooms from clientDetails
         Set<String> rooms = new LinkedHashSet<>();
+        Set<ColiveNameAndRooms> coliveNameAndRoomsSet = new LinkedHashSet<>();
         if (user.getClientDetails() != null && !user.getClientDetails().isEmpty()) {
             for (ClientAndRoomOnBoardId clientDetail : user.getClientDetails()) {
+                ColiveNameAndRooms coliveNameAndRooms = new ColiveNameAndRooms();
+                coliveNameAndRooms.setColiveName(clientDetail.getColiveName());
+                Set<Room> roomNumbers = new LinkedHashSet<>();
+
                 String roomOnBoardId = clientDetail.getRoomOnBoardId();
                 if (roomOnBoardId != null && !roomOnBoardId.trim().isEmpty()) {
                     Optional<RoomOnBoardDocument> roomOnBoard = roomsOrHouseRepository.findById(roomOnBoardId);
                     if (roomOnBoard.isPresent()) {
                         Set<Room> roomSet = roomOnBoard.get().getRooms();
                         if (roomSet != null && !roomSet.isEmpty()) {
-                            // Add room numbers as strings
+                            roomNumbers.addAll(roomSet);
                             for (Room room : roomSet) {
                                 if (room.getRoomNumber() != null) {
                                     rooms.add(room.getRoomNumber());
@@ -186,9 +191,18 @@ public class AdminService {
                         }
                     }
                 }
+
+                coliveNameAndRooms.setRooms(roomNumbers);
+                String category = clientDetail.getClientCategory();
+                if (category != null) {
+                    coliveNameAndRooms.setCategoryType(ColiveNameAndRooms.categoryValues.valueOf(category));
+                }
+                coliveNameAndRooms.setBankDetails(clientDetail.getBankDetails());
+                coliveNameAndRoomsSet.add(coliveNameAndRooms);
             }
         }
         response.setRooms(rooms);
+        response.setClientNameAndRooms(coliveNameAndRoomsSet);
         
         // Fetch and populate roleNames
         List<String> roleNames = new ArrayList<>();

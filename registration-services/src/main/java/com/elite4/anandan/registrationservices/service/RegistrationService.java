@@ -822,9 +822,20 @@ public class RegistrationService {
 
     /**
      * Returns all registrations (with room info) where occupied status is VACATED.
+     * Optionally filtered by coliveUserName and coliveName.
      */
-    public List<RegistrationWithRoomRequest> findRoomsWithVacatedaStatus() {
-        return registrationRepository.findByOccupied(Registration.roomOccupied.VACATED).stream()
+    public List<RegistrationWithRoomRequest> findRoomsWithVacatedaStatus(String coliveUserName, String coliveName) {
+        List<RegistrationDocument> vacatedList;
+        if (coliveUserName != null && !coliveUserName.isBlank() && coliveName != null && !coliveName.isBlank()) {
+            vacatedList = registrationRepository.findByOccupiedAndColiveUserNameAndColiveName(
+                    Registration.roomOccupied.VACATED, coliveUserName, coliveName);
+        } else if (coliveUserName != null && !coliveUserName.isBlank()) {
+            vacatedList = registrationRepository.findByOccupiedAndColiveUserName(
+                    Registration.roomOccupied.VACATED, coliveUserName);
+        } else {
+            vacatedList = registrationRepository.findByOccupied(Registration.roomOccupied.VACATED);
+        }
+        return vacatedList.stream()
                 .filter(doc -> doc.getCheckOutDate() != null && !doc.getCheckOutDate().toString().isBlank()&& doc.getActive()!= null && !doc.getActive())
                 .map(doc -> toDto(doc)).limit(500)
                 .collect(Collectors.toList());

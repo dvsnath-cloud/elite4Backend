@@ -106,12 +106,22 @@ public class TransferService {
      * Get pending transfer requests for a moderator.
      * Returns PENDING_SOURCE_APPROVAL where they are the source owner,
      * and PENDING_DESTINATION_APPROVAL where they are the destination owner.
+     * Optionally filtered by coliveName.
      */
-    public List<TransferRequestDocument> getPendingTransfersForModerator(String coliveUserName) {
-        List<TransferRequestDocument> sourceApprovals = transferRequestRepository
-                .findByStatusAndFromColiveUserName(TransferStatus.PENDING_SOURCE_APPROVAL, coliveUserName);
-        List<TransferRequestDocument> destApprovals = transferRequestRepository
-                .findByStatusAndToColiveUserName(TransferStatus.PENDING_DESTINATION_APPROVAL, coliveUserName);
+    public List<TransferRequestDocument> getPendingTransfersForModerator(String coliveUserName, String coliveName) {
+        List<TransferRequestDocument> sourceApprovals;
+        List<TransferRequestDocument> destApprovals;
+        if (coliveName != null && !coliveName.isBlank()) {
+            sourceApprovals = transferRequestRepository
+                    .findByStatusAndFromColiveUserNameAndFromColiveName(TransferStatus.PENDING_SOURCE_APPROVAL, coliveUserName, coliveName);
+            destApprovals = transferRequestRepository
+                    .findByStatusAndToColiveUserNameAndToColiveName(TransferStatus.PENDING_DESTINATION_APPROVAL, coliveUserName, coliveName);
+        } else {
+            sourceApprovals = transferRequestRepository
+                    .findByStatusAndFromColiveUserName(TransferStatus.PENDING_SOURCE_APPROVAL, coliveUserName);
+            destApprovals = transferRequestRepository
+                    .findByStatusAndToColiveUserName(TransferStatus.PENDING_DESTINATION_APPROVAL, coliveUserName);
+        }
         return Stream.concat(sourceApprovals.stream(), destApprovals.stream())
                 .collect(Collectors.toList());
     }

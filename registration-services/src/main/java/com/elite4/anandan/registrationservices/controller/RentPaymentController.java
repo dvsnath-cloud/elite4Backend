@@ -104,6 +104,34 @@ public class RentPaymentController {
     }
 
     /**
+     * Consolidated payment summary for a tenant — single API call.
+     * Returns current month status, first-time detection, prorated info,
+     * outstanding balance, and last 6 months payment history.
+     * GET /rentpayments/tenant/{tenantId}/payment-summary
+     */
+    @GetMapping("/tenant/{tenantId}/payment-summary")
+    public ResponseEntity<?> getTenantPaymentSummary(@PathVariable String tenantId) {
+        try {
+            log.info("GET /rentpayments/tenant/{}/payment-summary", tenantId);
+
+            TenantPaymentSummary summary = rentPaymentService.getTenantPaymentSummary(tenantId);
+
+            Map<String, Object> result = new HashMap<>();
+            result.put("success", true);
+            result.put("message", "Payment summary retrieved successfully");
+            result.put("data", summary);
+
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            log.error("Error fetching tenant payment summary", e);
+            Map<String, Object> error = new HashMap<>();
+            error.put("success", false);
+            error.put("message", e.getMessage());
+            return ResponseEntity.badRequest().body(error);
+        }
+    }
+
+    /**
      * Get owner's payment dashboard for current month
      * GET /rentpayments/owner/{username}/dashboard
      */
@@ -216,11 +244,12 @@ public class RentPaymentController {
      * GET /rentpayments/owner/{username}/pending-approvals
      */
     @GetMapping("/owner/{username}/pending-approvals")
-    public ResponseEntity<?> getPendingPaymentApprovals(@PathVariable String username) {
+    public ResponseEntity<?> getPendingPaymentApprovals(@PathVariable String username,
+            @RequestParam(required = false) String coliveName) {
         try {
-            log.info("GET /rentpayments/owner/{}/pending-approvals", username);
+            log.info("GET /rentpayments/owner/{}/pending-approvals?coliveName={}", username, coliveName);
             
-            List<PendingPaymentApprovalItem> approvals = rentPaymentService.getPendingPaymentApprovals(username);
+            List<PendingPaymentApprovalItem> approvals = rentPaymentService.getPendingPaymentApprovals(username, coliveName);
             
             Map<String, Object> result = new HashMap<>();
             result.put("success", true);
@@ -298,12 +327,13 @@ public class RentPaymentController {
     @GetMapping("/owner/{username}/collection-report")
     public ResponseEntity<?> getModeratorCollectionReport(
             @PathVariable String username,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) java.time.LocalDateTime upToDateTime) {
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) java.time.LocalDateTime upToDateTime,
+            @RequestParam(required = false) String coliveName) {
         try {
-            log.info("GET /rentpayments/owner/{}/collection-report", username);
+            log.info("GET /rentpayments/owner/{}/collection-report coliveName={}", username, coliveName);
             
             java.time.LocalDateTime reportDateTime = upToDateTime != null ? upToDateTime : java.time.LocalDateTime.now();
-            ModeratorCollectionReport report = rentPaymentService.getModeratorCollectionReport(username, reportDateTime);
+            ModeratorCollectionReport report = rentPaymentService.getModeratorCollectionReport(username, reportDateTime, coliveName);
             
             Map<String, Object> result = new HashMap<>();
             result.put("success", true);
