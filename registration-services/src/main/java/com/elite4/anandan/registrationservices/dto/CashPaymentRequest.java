@@ -18,8 +18,9 @@ public class CashPaymentRequest {
     private String tenantId;
     private String coliveName;
     private LocalDate rentMonth;               // The month for which rent is being paid (YYYY-MM-01)
-    private double amount;
+    private double amount;                      // Total amount paid (rent + optional advance)
     private String receiptNumber;              // Receipt ID/number provided by tenant
     private LocalDate cashReceivedDate;        // When the cash was received
     private String remarks;
+    private Double advanceAmount;              // Optional: Advance amount included in payment (default 0)
 }

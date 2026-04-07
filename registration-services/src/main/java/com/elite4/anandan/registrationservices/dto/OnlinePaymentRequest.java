@@ -21,4 +21,5 @@ public class OnlinePaymentRequest {
     private double amount;
     private String paymentMethod;              // UPI, CREDIT_CARD, DEBIT_CARD, etc.
     private String remarks;
+    private Double advanceAmount;              // Optional: Advance amount included in payment (default 0)
 }

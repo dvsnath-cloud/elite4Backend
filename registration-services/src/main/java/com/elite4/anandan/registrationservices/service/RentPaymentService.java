@@ -43,10 +43,13 @@ public class RentPaymentService {
 
         RentPaymentTransaction transaction = existingPayment.orElse(new RentPaymentTransaction());
 
-        // Calculate payment status
+        // Calculate payment status based on rent amount only
         double rentAmount = registration.getRoomRent();
-        double remainingAmount = Math.max(0, rentAmount - request.getAmount());
-        RentPaymentTransaction.PaymentStatus status = request.getAmount() >= rentAmount ? 
+        double advanceIncluded = request.getAdvanceAmount() != null ? request.getAdvanceAmount() : 0;
+        double rentPaid = request.getAmount() - advanceIncluded;
+        
+        double remainingAmount = Math.max(0, rentAmount - rentPaid);
+        RentPaymentTransaction.PaymentStatus status = rentPaid >= rentAmount ? 
             RentPaymentTransaction.PaymentStatus.COMPLETED : 
             RentPaymentTransaction.PaymentStatus.PARTIAL;
 
@@ -63,9 +66,9 @@ public class RentPaymentService {
 
         transaction.setPaymentType(RentPaymentTransaction.PaymentType.CASH);
         transaction.setRentAmount(rentAmount);
-        transaction.setAdvanceAmount(registration.getAdvanceAmount());
-        transaction.setPaidAmount(request.getAmount());
-        transaction.setRemainingAmount(remainingAmount);
+        transaction.setAdvanceAmount(advanceIncluded);  // Track actual advance paid in this transaction
+        transaction.setPaidAmount(request.getAmount());  // Total: rent + advance
+        transaction.setRemainingAmount(remainingAmount);  // Remaining rent only
         transaction.setRentMonth(request.getRentMonth());
         transaction.setDueDate(request.getRentMonth().plusMonths(1).minusDays(1)); // Last day of month
         transaction.setPaidDate(request.getCashReceivedDate());
@@ -108,10 +111,13 @@ public class RentPaymentService {
 
         RentPaymentTransaction transaction = existingPayment.orElse(new RentPaymentTransaction());
 
-        // Calculate payment status
+        // Calculate payment status based on rent amount only
         double rentAmount = registration.getRoomRent();
-        double remainingAmount = Math.max(0, rentAmount - request.getAmount());
-        RentPaymentTransaction.PaymentStatus status = request.getAmount() >= rentAmount ? 
+        double advanceIncluded = request.getAdvanceAmount() != null ? request.getAdvanceAmount() : 0;
+        double rentPaid = request.getAmount() - advanceIncluded;
+        
+        double remainingAmount = Math.max(0, rentAmount - rentPaid);
+        RentPaymentTransaction.PaymentStatus status = rentPaid >= rentAmount ? 
             RentPaymentTransaction.PaymentStatus.COMPLETED : 
             RentPaymentTransaction.PaymentStatus.PARTIAL;
 
@@ -128,9 +134,9 @@ public class RentPaymentService {
 
         transaction.setPaymentType(RentPaymentTransaction.PaymentType.ONLINE);
         transaction.setRentAmount(rentAmount);
-        transaction.setAdvanceAmount(registration.getAdvanceAmount());
-        transaction.setPaidAmount(request.getAmount());
-        transaction.setRemainingAmount(remainingAmount);
+        transaction.setAdvanceAmount(advanceIncluded);  // Track actual advance paid
+        transaction.setPaidAmount(request.getAmount());  // Total: rent + advance
+        transaction.setRemainingAmount(remainingAmount);  // Remaining rent only
         transaction.setRentMonth(request.getRentMonth());
         transaction.setDueDate(request.getRentMonth().plusMonths(1).minusDays(1)); // Last day of month
         transaction.setPaidDate(LocalDate.now()); // Online payment treated as paid today
@@ -341,6 +347,9 @@ public class RentPaymentService {
 
         RentPaymentTransaction transaction = new RentPaymentTransaction();
 
+        // Extract advance amount if included in payment
+        double advanceIncluded = request.getAdvanceAmount() != null ? request.getAdvanceAmount() : 0;
+
         // Set prorated payment details
         transaction.setIsProratedPayment(true);
         transaction.setProratedStartDate(request.getProratedStartDate());
@@ -365,7 +374,8 @@ public class RentPaymentService {
 
         transaction.setPaymentType(RentPaymentTransaction.PaymentType.CASH);
         transaction.setRentAmount(request.getProratedAmount());
-        transaction.setPaidAmount(request.getProratedAmount());
+        transaction.setAdvanceAmount(advanceIncluded);  // Track actual advance paid
+        transaction.setPaidAmount(request.getProratedAmount() + advanceIncluded);  // Total: prorated + advance
         transaction.setRemainingAmount(0);
         transaction.setStatus(RentPaymentTransaction.PaymentStatus.PENDING_APPROVAL); // Awaits moderator approval
         transaction.setApprovalStatus(RentPaymentTransaction.ApprovalStatus.PENDING_APPROVAL);

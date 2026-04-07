@@ -198,6 +198,9 @@ public class AdminService {
                     coliveNameAndRooms.setCategoryType(ColiveNameAndRooms.categoryValues.valueOf(category));
                 }
                 coliveNameAndRooms.setBankDetails(clientDetail.getBankDetails());
+                // Map license documents and photos from entity to DTO
+                coliveNameAndRooms.setLicenseDocumentsPath(clientDetail.getLicenseDocumentsPath());
+                coliveNameAndRooms.setUploadedPhotos(clientDetail.getUploadedPhotos());
                 coliveNameAndRoomsSet.add(coliveNameAndRooms);
             }
         }
@@ -252,8 +255,47 @@ public class AdminService {
     public ColiveNameAndRooms getUserClientsWithRoomsAndUploadedPhotosAndAttachments(String username, String coliveName) {
         Optional<User> user = userRepository.findByUsername(username);
         if (user.isPresent()) {
+            User userData = user.get();
             ColiveNameAndRooms result = new ColiveNameAndRooms();
             result.setColiveName(coliveName);
+            
+            // Find the matching client detail for this colive
+            if (userData.getClientDetails() != null && !userData.getClientDetails().isEmpty()) {
+                for (ClientAndRoomOnBoardId clientDetail : userData.getClientDetails()) {
+                    if (coliveName.equals(clientDetail.getColiveName())) {
+                        // Set category type
+                        String category = clientDetail.getClientCategory();
+                        if (category != null) {
+                            result.setCategoryType(ColiveNameAndRooms.categoryValues.valueOf(category));
+                        }
+                        
+                        // Fetch and set rooms
+                        String roomOnBoardId = clientDetail.getRoomOnBoardId();
+                        if (roomOnBoardId != null && !roomOnBoardId.trim().isEmpty()) {
+                            Optional<RoomOnBoardDocument> roomOnBoard = roomsOrHouseRepository.findById(roomOnBoardId);
+                            if (roomOnBoard.isPresent()) {
+                                Set<Room> roomSet = roomOnBoard.get().getRooms();
+                                if (roomSet != null && !roomSet.isEmpty()) {
+                                    result.setRooms(roomSet);
+                                }
+                            }
+                        }
+                        
+                        // Set bank details
+                        result.setBankDetails(clientDetail.getBankDetails());
+                        
+                        // Set uploaded photos
+                        result.setUploadedPhotos(clientDetail.getUploadedPhotos());
+                        
+                        // Set license documents
+                        result.setLicenseDocumentsPath(clientDetail.getLicenseDocumentsPath());
+                        
+                        return result;
+                    }
+                }
+            }
+            
+            // If colive not found in client details, return with basic info
             result.setCategoryType(ColiveNameAndRooms.categoryValues.FLAT);
             return result;
         }

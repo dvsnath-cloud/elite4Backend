@@ -24,4 +24,5 @@ public class ProratedCashPaymentRequest {
     private String receiptNumber;
     private LocalDate cashReceivedDate;
     private String remarks;
+    private Double advanceAmount;               // Optional: Advance amount included in payment (default 0)
 }

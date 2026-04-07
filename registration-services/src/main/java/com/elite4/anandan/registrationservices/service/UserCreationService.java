@@ -867,6 +867,9 @@ public class UserCreationService {
                 String category = clientAndRoomOnBoardId.getClientCategory();
                 coliveNameAndRooms.setCategoryType(ColiveNameAndRooms.categoryValues.valueOf(category));
                 coliveNameAndRooms.setBankDetails(clientAndRoomOnBoardId.getBankDetails());
+                // Map license documents and photos from entity to DTO
+                coliveNameAndRooms.setLicenseDocumentsPath(clientAndRoomOnBoardId.getLicenseDocumentsPath());
+                coliveNameAndRooms.setUploadedPhotos(clientAndRoomOnBoardId.getUploadedPhotos());
                 coliveNameAndRoomsSet.add(coliveNameAndRooms);
             }
         }
