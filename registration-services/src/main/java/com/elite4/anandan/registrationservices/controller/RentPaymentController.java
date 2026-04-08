@@ -198,19 +198,23 @@ public class RentPaymentController {
     /**
      * Get owner's bank details (for tenant to know where to transfer)
      * GET /rentpayments/owner/{username}/bankdetails
+     * Query params: coliveName (required)
      */
     @GetMapping("/owner/{username}/bankdetails")
     @PreAuthorize("hasAnyRole('ADMIN','MODERATOR','USER')")
-    public ResponseEntity<?> getOwnerBankDetails(@PathVariable String username) {
+    public ResponseEntity<?> getOwnerBankDetails(@PathVariable String username, 
+                                                 @RequestParam(value = "coliveName", required = false) String coliveName) {
         try {
-            log.info("GET /rentpayments/owner/{}/bankdetails", username);
+            log.info("GET /rentpayments/owner/{}/bankdetails?coliveName={}", username, coliveName);
             
-            // This will be implemented in a separate service to fetch from User document
-            Map<String, Object> result = new HashMap<>();
-            result.put("success", true);
-            result.put("message", "Bank details retrieved successfully");
-            // Bank details will be populated from User document
+            if (coliveName == null || coliveName.trim().isEmpty()) {
+                Map<String, Object> error = new HashMap<>();
+                error.put("success", false);
+                error.put("message", "coliveName parameter is required");
+                return ResponseEntity.badRequest().body(error);
+            }
             
+            Map<String, Object> result = rentPaymentService.getBankDetailsByColiveAndRoomOwner(username, coliveName);
             return ResponseEntity.ok(result);
         } catch (Exception e) {
             log.error("Error fetching owner bank details", e);

@@ -3,8 +3,10 @@ package com.elite4.anandan.registrationservices.service;
 import com.elite4.anandan.registrationservices.document.RegistrationDocument;
 import com.elite4.anandan.registrationservices.document.RentPaymentTransaction;
 import com.elite4.anandan.registrationservices.dto.*;
+import com.elite4.anandan.registrationservices.model.User;
 import com.elite4.anandan.registrationservices.repository.RentPaymentTransactionRepository;
 import com.elite4.anandan.registrationservices.repository.RegistrationRepository;
+import com.elite4.anandan.registrationservices.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -22,6 +24,92 @@ public class RentPaymentService {
 
     private final RentPaymentTransactionRepository paymentRepository;
     private final RegistrationRepository registrationRepository;
+    private final UserRepository userRepository;
+    
+    /**
+     * Fetch bank details for a property using coliveUserName and coliveName
+     * This is called by the tenant to know where to transfer rent
+     */
+    public Map<String, Object> getBankDetailsByColiveAndRoomOwner(String coliveUserName, String coliveName) {
+        log.info("Fetching bank details for coliveUserName: {} and coliveName: {}", coliveUserName, coliveName);
+        
+        Map<String, Object> response = new HashMap<>();
+        
+        try {
+            // Find the User (property owner) by username
+            var userOptional = userRepository.findByUsername(coliveUserName);
+            
+            if (userOptional.isEmpty()) {
+                log.warn("User not found for coliveUserName: {}", coliveUserName);
+                response.put("success", true);
+                response.put("message", "Property owner not found");
+                response.put("bankDetails", null);
+                return response;
+            }
+            
+            User user = userOptional.get();
+            
+            // Find the specific property (clientDetail) by coliveName
+            if (user.getClientDetails() == null || user.getClientDetails().isEmpty()) {
+                log.warn("No properties found for user: {}", coliveUserName);
+                response.put("success", true);
+                response.put("message", "No properties found for this owner");
+                response.put("bankDetails", null);
+                return response;
+            }
+            
+            // Try exact match first
+            ClientAndRoomOnBoardId clientDetail = user.getClientDetails().stream()
+                    .filter(c -> coliveName.equals(c.getColiveName()))
+                    .findFirst()
+                    .orElse(null);
+            
+            // Try case-insensitive match if exact match fails
+            if (clientDetail == null) {
+                clientDetail = user.getClientDetails().stream()
+                        .filter(c -> c.getColiveName() != null && 
+                                   c.getColiveName().equalsIgnoreCase(coliveName))
+                        .findFirst()
+                        .orElse(null);
+            }
+            
+            // If still not found, log available properties and use first with bank details
+            if (clientDetail == null) {
+                log.warn("No exact match for coliveName: {}. Available properties: {}", coliveName,
+                        user.getClientDetails().stream()
+                                .map(ClientAndRoomOnBoardId::getColiveName)
+                                .toList());
+                
+                clientDetail = user.getClientDetails().stream()
+                        .filter(c -> c.getBankDetails() != null)
+                        .findFirst()
+                        .orElse(null);
+            }
+            
+            if (clientDetail != null && clientDetail.getBankDetails() != null) {
+                response.put("success", true);
+                response.put("message", "Bank details retrieved successfully");
+                response.put("bankDetails", clientDetail.getBankDetails());
+                response.put("coliveName", clientDetail.getColiveName());
+                response.put("coliveOwnerUsername", coliveUserName);
+                log.info("✅ Bank details found for property {}: {}", coliveName, clientDetail.getBankDetails().getBankName());
+            } else {
+                log.warn("No bank details found for property: {}", coliveName);
+                response.put("success", true);
+                response.put("message", "Bank details not configured for this property");
+                response.put("bankDetails", null);
+                response.put("coliveName", coliveName);
+                response.put("coliveOwnerUsername", coliveUserName);
+            }
+            
+        } catch (Exception e) {
+            log.error("Error fetching bank details for coliveUserName: {} and coliveName: {}", coliveUserName, coliveName, e);
+            response.put("success", false);
+            response.put("message", "Error fetching bank details: " + e.getMessage());
+        }
+        
+        return response;
+    }
 
     /**
      * Record a cash payment for rent
