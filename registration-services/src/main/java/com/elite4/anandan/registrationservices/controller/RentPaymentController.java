@@ -6,9 +6,11 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
+import java.time.YearMonth;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -27,6 +29,7 @@ public class RentPaymentController {
      * POST /rentpayments/cash
      */
     @PostMapping("/cash")
+    @PreAuthorize("hasAnyRole('ADMIN','MODERATOR','USER')")
     public ResponseEntity<?> recordCashPayment(@RequestBody CashPaymentRequest request) {
         try {
             log.info("POST /rentpayments/cash - Recording cash payment for tenant: {}", request.getTenantId());
@@ -54,6 +57,7 @@ public class RentPaymentController {
      * POST /rentpayments/online
      */
     @PostMapping("/online")
+    @PreAuthorize("hasAnyRole('ADMIN','MODERATOR','USER')")
     public ResponseEntity<?> recordOnlinePayment(@RequestBody OnlinePaymentRequest request) {
         try {
             log.info("POST /rentpayments/online - Recording online payment for tenant: {}", request.getTenantId());
@@ -81,6 +85,7 @@ public class RentPaymentController {
      * GET /rentpayments/tenant/{tenantId}/history
      */
     @GetMapping("/tenant/{tenantId}/history")
+    @PreAuthorize("hasAnyRole('ADMIN','MODERATOR','USER')")
     public ResponseEntity<?> getTenantPaymentHistory(@PathVariable String tenantId) {
         try {
             log.info("GET /rentpayments/tenant/{}/history", tenantId);
@@ -110,6 +115,7 @@ public class RentPaymentController {
      * GET /rentpayments/tenant/{tenantId}/payment-summary
      */
     @GetMapping("/tenant/{tenantId}/payment-summary")
+    @PreAuthorize("hasAnyRole('ADMIN','MODERATOR','USER')")
     public ResponseEntity<?> getTenantPaymentSummary(@PathVariable String tenantId) {
         try {
             log.info("GET /rentpayments/tenant/{}/payment-summary", tenantId);
@@ -136,6 +142,7 @@ public class RentPaymentController {
      * GET /rentpayments/owner/{username}/dashboard
      */
     @GetMapping("/owner/{username}/dashboard")
+    @PreAuthorize("hasAnyRole('ADMIN','MODERATOR')")
     public ResponseEntity<?> getOwnerPaymentDashboard(
             @PathVariable String username,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate month) {
@@ -165,6 +172,7 @@ public class RentPaymentController {
      * GET /rentpayments/owner/{username}/history
      */
     @GetMapping("/owner/{username}/history")
+    @PreAuthorize("hasAnyRole('ADMIN','MODERATOR')")
     public ResponseEntity<?> getOwnerPaymentHistory(@PathVariable String username) {
         try {
             log.info("GET /rentpayments/owner/{}/history", username);
@@ -192,6 +200,7 @@ public class RentPaymentController {
      * GET /rentpayments/owner/{username}/bankdetails
      */
     @GetMapping("/owner/{username}/bankdetails")
+    @PreAuthorize("hasAnyRole('ADMIN','MODERATOR','USER')")
     public ResponseEntity<?> getOwnerBankDetails(@PathVariable String username) {
         try {
             log.info("GET /rentpayments/owner/{}/bankdetails", username);
@@ -217,6 +226,7 @@ public class RentPaymentController {
      * POST /rentpayments/prorated-cash
      */
     @PostMapping("/prorated-cash")
+    @PreAuthorize("hasAnyRole('ADMIN','MODERATOR','USER')")
     public ResponseEntity<?> recordProratedCashPayment(@RequestBody ProratedCashPaymentRequest request) {
         try {
             log.info("POST /rentpayments/prorated-cash - Recording prorated payment for tenant: {}", request.getTenantId());
@@ -244,6 +254,7 @@ public class RentPaymentController {
      * GET /rentpayments/owner/{username}/pending-approvals
      */
     @GetMapping("/owner/{username}/pending-approvals")
+    @PreAuthorize("hasAnyRole('ADMIN','MODERATOR')")
     public ResponseEntity<?> getPendingPaymentApprovals(@PathVariable String username,
             @RequestParam(required = false) String coliveName) {
         try {
@@ -272,6 +283,7 @@ public class RentPaymentController {
      * POST /rentpayments/approve-reject
      */
     @PostMapping("/approve-reject")
+    @PreAuthorize("hasAnyRole('ADMIN','MODERATOR')")
     public ResponseEntity<?> approveRejectPayment(@RequestBody PaymentApprovalRequest request) {
         try {
             log.info("POST /rentpayments/approve-reject - Processing approval for transaction: {}", request.getTransactionId());
@@ -299,6 +311,7 @@ public class RentPaymentController {
      * GET /rentpayments/tenant/{tenantId}/outstanding-balance
      */
     @GetMapping("/tenant/{tenantId}/outstanding-balance")
+    @PreAuthorize("hasAnyRole('ADMIN','MODERATOR','USER')")
     public ResponseEntity<?> getTenantOutstandingBalance(@PathVariable String tenantId) {
         try {
             log.info("GET /rentpayments/tenant/{}/outstanding-balance", tenantId);
@@ -321,19 +334,21 @@ public class RentPaymentController {
     }
 
     /**
-     * (Requirement #5) Get moderator's collection report up to specific date and time
-     * GET /rentpayments/owner/{username}/collection-report
+     * (Requirement #5) Get moderator's collection report for a specific month (YYYY-MM format)
+     * GET /rentpayments/owner/{username}/collection-report?month=YYYY-MM
      */
     @GetMapping("/owner/{username}/collection-report")
+    @PreAuthorize("hasAnyRole('ADMIN','MODERATOR')")
     public ResponseEntity<?> getModeratorCollectionReport(
             @PathVariable String username,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) java.time.LocalDateTime upToDateTime,
+            @RequestParam(required = false) String month,
             @RequestParam(required = false) String coliveName) {
         try {
-            log.info("GET /rentpayments/owner/{}/collection-report coliveName={}", username, coliveName);
+            log.info("GET /rentpayments/owner/{}/collection-report month={} coliveName={}", username, month, coliveName);
             
-            java.time.LocalDateTime reportDateTime = upToDateTime != null ? upToDateTime : java.time.LocalDateTime.now();
-            ModeratorCollectionReport report = rentPaymentService.getModeratorCollectionReport(username, reportDateTime, coliveName);
+            // Default to current month if not specified
+            String reportMonth = month != null ? month : java.time.YearMonth.now().toString();
+            ModeratorCollectionReport report = rentPaymentService.getMonthlyCollectionStatus(username, reportMonth, coliveName);
             
             Map<String, Object> result = new HashMap<>();
             result.put("success", true);
@@ -343,6 +358,37 @@ public class RentPaymentController {
             return ResponseEntity.ok(result);
         } catch (Exception e) {
             log.error("Error generating collection report", e);
+            Map<String, Object> error = new HashMap<>();
+            error.put("success", false);
+            error.put("message", e.getMessage());
+            return ResponseEntity.badRequest().body(error);
+        }
+    }
+
+    /**
+     * (UI Integration) Get monthly collection status for moderator
+     * Returns collection data for the specified month and property
+     * GET /rentpayments/owner/{username}/monthly-collection-status?month={YYYY-MM}&coliveName={optional}
+     */
+    @GetMapping("/owner/{username}/monthly-collection-status")
+    @PreAuthorize("hasAnyRole('ADMIN','MODERATOR')")
+    public ResponseEntity<?> getMonthlyCollectionStatus(
+            @PathVariable String username,
+            @RequestParam(required = true) String month,
+            @RequestParam(required = false) String coliveName) {
+        try {
+            log.info("GET /rentpayments/owner/{}/monthly-collection-status month={} coliveName={}", username, month, coliveName);
+            
+            ModeratorCollectionReport report = rentPaymentService.getMonthlyCollectionStatus(username, month, coliveName);
+            
+            Map<String, Object> result = new HashMap<>();
+            result.put("success", true);
+            result.put("message", "Monthly collection status retrieved successfully");
+            result.put("data", report);
+            
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            log.error("Error retrieving monthly collection status", e);
             Map<String, Object> error = new HashMap<>();
             error.put("success", false);
             error.put("message", e.getMessage());

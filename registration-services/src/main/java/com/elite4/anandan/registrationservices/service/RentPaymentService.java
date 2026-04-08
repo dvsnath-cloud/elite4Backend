@@ -525,89 +525,200 @@ public class RentPaymentService {
     }
 
     /**
-     * (Requirement #5) Get moderator's collection details/report up to current date and time
+     * Get moderator's collection report showing payment status of each room for the requested month
+     * Returns ROOM-BASED view, not transaction-based
      */
-    public ModeratorCollectionReport getModeratorCollectionReport(String coliveOwnerUsername, LocalDateTime upToDateTime, String coliveName) {
-        log.info("Generating collection report for owner: {} coliveName: {} up to: {}", coliveOwnerUsername, coliveName, upToDateTime);
+    public ModeratorCollectionReport getMonthlyCollectionStatus(String coliveOwnerUsername, String monthStr, String coliveName) {
+        log.info("Generating monthly collection status for owner: {} month: {} coliveName: {}", coliveOwnerUsername, monthStr, coliveName);
 
-        LocalDate today = upToDateTime.toLocalDate();
-        LocalDateTime startOfDay = today.atStartOfDay();
-        LocalDateTime endOfDay = today.atTime(23, 59, 59);
+        // Parse month string (YYYY-MM)
+        String[] parts = monthStr.split("-");
+        int year = Integer.parseInt(parts[0]);
+        int monthNum = Integer.parseInt(parts[1]);
+        LocalDate rentMonth = LocalDate.of(year, monthNum, 1);
 
-        // Get all transactions up to the given datetime, optionally filtered by coliveName
-        List<RentPaymentTransaction> allTransactions;
+        // Get all registrations for this moderator (optionally filtered by coliveName)
+        List<RegistrationDocument> registrations;
         if (coliveName != null && !coliveName.isBlank()) {
-            allTransactions = paymentRepository
-                .findByColiveOwnerUsernameAndColiveNameAndCreatedAtBefore(coliveOwnerUsername, coliveName, upToDateTime);
+            registrations = registrationRepository.findByColiveNameAndColiveUserName(coliveName, coliveOwnerUsername);
         } else {
-            allTransactions = paymentRepository
-                .findByColiveOwnerUsernameAndCreatedAtBefore(coliveOwnerUsername, upToDateTime);
+            registrations = registrationRepository.findByOccupiedAndColiveUserName(Registration.roomOccupied.OCCUPIED, coliveOwnerUsername);
         }
 
-        // Separate by status
-        List<RentPaymentTransaction> approvedPayments = allTransactions.stream()
-            .filter(t -> t.getApprovalStatus() == RentPaymentTransaction.ApprovalStatus.APPROVED ||
-                        t.getPaymentType() == RentPaymentTransaction.PaymentType.ONLINE)
+        log.info("Found {} registrations for moderator: {} in month: {}", registrations.size(), coliveOwnerUsername, monthStr);
+
+        // Get all payments for this moderator (we'll filter by month in code to handle late payments)
+        List<RentPaymentTransaction> allPayments = paymentRepository.findByColiveOwnerUsername(coliveOwnerUsername);
+        
+        // Filter payments by month - include if EITHER rentMonth OR paidDate month matches
+        // This captures both regular payments and late/advance payments made in the current month
+        List<RentPaymentTransaction> monthlyPayments = allPayments.stream()
+            .filter(p -> {
+                boolean rentMonthMatches = p.getRentMonth() != null && 
+                    p.getRentMonth().getYear() == year && 
+                    p.getRentMonth().getMonthValue() == monthNum;
+                
+                boolean paidDateMatches = p.getPaidDate() != null && 
+                    p.getPaidDate().getYear() == year && 
+                    p.getPaidDate().getMonthValue() == monthNum;
+                
+                boolean matchesMonth = rentMonthMatches || paidDateMatches;
+                if (matchesMonth) {
+                    log.debug("Payment matches month {}-{}: tenantId={}, rentMonth={}, paidDate={}", 
+                        year, monthNum, p.getTenantId(), p.getRentMonth(), p.getPaidDate());
+                }
+                return matchesMonth;
+            })
+            .collect(Collectors.toList());
+        
+        // If coliveName specified, further filter payments
+        if (coliveName != null && !coliveName.isBlank()) {
+            monthlyPayments = monthlyPayments.stream()
+                .filter(p -> coliveName.equals(p.getColiveName()))
+                .collect(Collectors.toList());
+        }
+
+        log.info("Found {} payments for moderator: {} in month: {} (including late/advance payments)", monthlyPayments.size(), coliveOwnerUsername, monthStr);
+
+        // Build a map of registration ID (tenantId) to payment for quick lookup
+        Map<String, RentPaymentTransaction> paymentsByRegistrationId = monthlyPayments.stream()
+            .peek(p -> log.debug("Payment details - tenantId: {}, amount: {}, type: {}, method: {}, status: {}", 
+                p.getTenantId(), p.getPaidAmount(), p.getPaymentType(), p.getPaymentMethod(), p.getStatus()))
+            .collect(Collectors.toMap(RentPaymentTransaction::getTenantId, p -> p, (p1, p2) -> p1));
+
+        log.info("Payment map contains {} entries", paymentsByRegistrationId.size());
+
+        // Convert registrations to RoomPaymentStatus
+        List<ModeratorCollectionReport.RoomPaymentStatus> rooms = registrations.stream()
+            .map(reg -> {
+                try {
+                    log.debug("Processing registration: id={}, room={}, tenant={}", reg.getId(), 
+                        reg.getRoomForRegistration() != null ? reg.getRoomForRegistration().getRoomNumber() : "N/A", 
+                        reg.getFname());
+                    
+                    RentPaymentTransaction payment = paymentsByRegistrationId.get(reg.getId());
+                    if (payment == null) {
+                        log.debug("No payment found for registration {} in payment map", reg.getId());
+                    } else {
+                        log.debug("Found payment for registration {}: amount={}", reg.getId(), payment.getPaidAmount());
+                    }
+                    
+                    String status = "UNPAID";
+                    Double paidAmount = 0.0;
+                    LocalDate paidDate = null;
+                    String paymentMethod = null;
+                    String paymentType = null;
+                    String receiptNumber = null;
+                    Boolean isProratedPayment = false;
+                    Integer proratedDaysCount = null;
+                    LocalDateTime transactionTime = null;
+
+                    if (payment != null && (payment.getStatus() == RentPaymentTransaction.PaymentStatus.COMPLETED ||
+                                           payment.getStatus() == RentPaymentTransaction.PaymentStatus.PENDING_APPROVAL)) {
+                        paidAmount = payment.getPaidAmount();
+                        log.debug("Found payment for registration {}: amount={}, type={}, method={}, status={}", 
+                            reg.getId(), paidAmount, payment.getPaymentType(), payment.getPaymentMethod(), payment.getStatus());
+                        
+                        Double rentVal = reg.getRoomRent();
+                        double rentAmount = (rentVal != null) ? rentVal.doubleValue() : 0.0;
+                        
+                        // Fixed status calculation: if paid >= rent, it's PAID (including advance/prorated)
+                        if (paidAmount >= rentAmount - 0.01) {
+                            status = "PAID";
+                        } else if (paidAmount > 0) {
+                            status = "PARTIAL";
+                        } else {
+                            status = "UNPAID";
+                        }
+                        
+                        paidDate = payment.getRentMonth();
+                        paymentMethod = payment.getPaymentMethod();
+                        paymentType = payment.getPaymentType() != null ? payment.getPaymentType().toString() : null;
+                        receiptNumber = payment.getReceiptNumber();
+                        isProratedPayment = payment.getIsProratedPayment();
+                        proratedDaysCount = payment.getProratedDaysCount();
+                        transactionTime = payment.getCollectionDateTime() != null ? payment.getCollectionDateTime() : payment.getCreatedAt();
+                    }
+
+                    Double rentVal = reg.getRoomRent();
+                    String roomNumber = "N/A";
+                    try {
+                        if (reg.getRoomForRegistration() != null && reg.getRoomForRegistration().getRoomNumber() != null) {
+                            roomNumber = reg.getRoomForRegistration().getRoomNumber();
+                        }
+                    } catch (Exception e) {
+                        log.warn("Error getting room number for registration: {}", reg.getId(), e);
+                    }
+                    
+                    String tenantName = "Unknown";
+                    try {
+                        String fname = reg.getFname() != null ? reg.getFname() : "";
+                        String lname = reg.getLname() != null ? reg.getLname() : "";
+                        tenantName = (fname + " " + lname).trim();
+                        if (tenantName.isEmpty()) tenantName = "Unknown";
+                    } catch (Exception e) {
+                        log.warn("Error getting tenant name for registration: {}", reg.getId(), e);
+                    }
+
+                    return ModeratorCollectionReport.RoomPaymentStatus.builder()
+                        .registrationId(reg.getId())
+                        .roomNumber(roomNumber)
+                        .tenantName(tenantName)
+                        .coliveUserName(reg.getColiveUserName() != null ? reg.getColiveUserName() : "")
+                        .rentAmount((rentVal != null) ? rentVal.doubleValue() : 0.0)
+                        .advanceAmount(reg.getAdvanceAmount())
+                        .paidAmount(paidAmount)
+                        .status(status)
+                        .paidDate(paidDate)
+                        .paymentMethod(paymentMethod)
+                        .paymentType(paymentType)
+                        .receiptNumber(receiptNumber)
+                        .isProratedPayment(isProratedPayment)
+                        .proratedDaysCount(proratedDaysCount)
+                        .transactionTime(transactionTime)
+                        .build();
+                } catch (Exception e) {
+                    log.error("Error processing registration: {}", reg.getId(), e);
+                    // Return a safe default entry
+                    return ModeratorCollectionReport.RoomPaymentStatus.builder()
+                        .registrationId(reg.getId())
+                        .roomNumber("ERROR")
+                        .tenantName("Error Processing")
+                        .coliveUserName("")
+                        .rentAmount(0.0)
+                        .paidAmount(0.0)
+                        .status("UNPAID")
+                        .build();
+                }
+            })
+            .sorted(Comparator.nullsLast(Comparator.comparing(ModeratorCollectionReport.RoomPaymentStatus::getRoomNumber)))
             .collect(Collectors.toList());
 
-        List<RentPaymentTransaction> pendingApprovals = allTransactions.stream()
-            .filter(t -> t.getApprovalStatus() == RentPaymentTransaction.ApprovalStatus.PENDING_APPROVAL)
-            .collect(Collectors.toList());
+        // Calculate summary statistics
+        int totalRooms = rooms.size();
+        int totalPaidRooms = (int) rooms.stream().filter(r -> "PAID".equals(r.getStatus())).count();
+        int totalUnpaidRooms = (int) rooms.stream().filter(r -> "UNPAID".equals(r.getStatus())).count();
+        int totalPartialRooms = (int) rooms.stream().filter(r -> "PARTIAL".equals(r.getStatus())).count();
 
-        List<RentPaymentTransaction> rejectedPayments = allTransactions.stream()
-            .filter(t -> t.getApprovalStatus() == RentPaymentTransaction.ApprovalStatus.REJECTED)
-            .collect(Collectors.toList());
+        double totalExpectedRent = rooms.stream().mapToDouble(ModeratorCollectionReport.RoomPaymentStatus::getRentAmount).sum();
+        double totalCollected = rooms.stream().mapToDouble(ModeratorCollectionReport.RoomPaymentStatus::getPaidAmount).sum();
+        double totalPending = totalExpectedRent - totalCollected;
 
-        // Calculate totals
-        double totalCash = approvedPayments.stream()
-            .filter(t -> t.getPaymentType() == RentPaymentTransaction.PaymentType.CASH)
-            .mapToDouble(RentPaymentTransaction::getPaidAmount)
-            .sum();
-
-        double totalOnline = approvedPayments.stream()
-            .filter(t -> t.getPaymentType() == RentPaymentTransaction.PaymentType.ONLINE)
-            .mapToDouble(RentPaymentTransaction::getPaidAmount)
-            .sum();
-
-        double totalCollected = totalCash + totalOnline;
-
-        // Build transaction details
-        List<ModeratorCollectionReport.CollectionTransactionDetail> transactionDetails = allTransactions.stream()
-            .map(t -> ModeratorCollectionReport.CollectionTransactionDetail.builder()
-                .transactionId(t.getId())
-                .tenantName(t.getTenantName())
-                .roomNumber(t.getRoomNumber())
-                .coliveName(t.getColiveName())
-                .amount(t.getPaidAmount())
-                .paymentType(t.getPaymentType().toString())
-                .paymentMethod(t.getPaymentMethod())
-                .rentMonth(t.getRentMonth().toString())
-                .collectionTime(t.getCollectionDateTime() != null ? t.getCollectionDateTime() : t.getCreatedAt())
-                .status(t.getStatus().toString())
-                .receiptNumber(t.getReceiptNumber())
-                .isProratedPayment(t.getIsProratedPayment())
-                .proratedDaysCount(t.getProratedDaysCount())
-                .approvalRemarks(t.getApprovalRemarks())
-                .approvedAt(t.getApprovedAt())
-                .build())
-            .sorted(Comparator.comparing(ModeratorCollectionReport.CollectionTransactionDetail::getCollectionTime).reversed())
-            .collect(Collectors.toList());
-
-        String period = "Up to " + upToDateTime.format(java.time.format.DateTimeFormatter.ofPattern("dd-MMM-yyyy HH:mm"));
+        String period = monthStr;
 
         return ModeratorCollectionReport.builder()
             .reportGeneratedAt(LocalDateTime.now())
             .moderatorUsername(coliveOwnerUsername)
             .coliveName(coliveName)
             .period(period)
-            .totalTransactionsProcessed(approvedPayments.size())
-            .totalCashCollected(totalCash)
-            .totalOnlineCollected(totalOnline)
+            .totalRooms(totalRooms)
+            .totalPaidRooms(totalPaidRooms)
+            .totalUnpaidRooms(totalUnpaidRooms)
+            .totalPartialRooms(totalPartialRooms)
+            .totalExpectedRent(totalExpectedRent)
             .totalCollected(totalCollected)
-            .totalApprovedPayments(approvedPayments.size())
-            .totalPendingApprovals(pendingApprovals.size())
-            .totalRejectedPayments(rejectedPayments.size())
-            .transactions(transactionDetails)
+            .totalPending(totalPending)
+            .rooms(rooms)
             .build();
     }
 
