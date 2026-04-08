@@ -203,7 +203,7 @@ public class RentPaymentController {
     @GetMapping("/owner/{username}/bankdetails")
     @PreAuthorize("hasAnyRole('ADMIN','MODERATOR','USER')")
     public ResponseEntity<?> getOwnerBankDetails(@PathVariable String username, 
-                                                 @RequestParam(value = "coliveName", required = false) String coliveName) {
+                                                 @RequestParam(value = "coliveName", required = true) String coliveName) {
         try {
             log.info("GET /rentpayments/owner/{}/bankdetails?coliveName={}", username, coliveName);
             
