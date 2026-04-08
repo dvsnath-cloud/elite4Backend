@@ -41,9 +41,9 @@ public class PaymentController {
 
     @PostMapping("/order")
     public ResponseEntity<?> createOrder(@RequestBody PaymentRequest request) {
-        log.info("POST /payments/order → request: amount={}, currency={}, registrationId={}, tenantName={}, paymentFor={}",
+        log.info("POST /payments/order → request: amount={}, currency={}, registrationId={}, tenantName={}, paymentFor={}, ownerUsername={}, coliveName={}",
                 request.getAmount(), request.getCurrency(), request.getRegistrationId(),
-                request.getTenantName(), request.getPaymentFor());
+                request.getTenantName(), request.getPaymentFor(), request.getOwnerUsername(), request.getColiveName());
         try {
             if (!paymentService.isConfigured()) {
                 log.warn("POST /payments/order → Razorpay not configured");

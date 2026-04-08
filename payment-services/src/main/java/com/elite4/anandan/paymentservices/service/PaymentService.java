@@ -47,6 +47,8 @@ public class PaymentService {
         notes.put("tenantName", safe(request.getTenantName()));
         notes.put("paymentFor", safe(defaultValue(request.getPaymentFor(), "monthly_rent")));
         notes.put("description", safe(request.getDescription()));
+        notes.put("ownerUsername", safe(request.getOwnerUsername()));
+        notes.put("coliveName", safe(request.getColiveName()));
         options.put("notes", notes);
 
         log.info("Razorpay API → POST https://api.razorpay.com/v1/orders, payload={}", options);
