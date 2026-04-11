@@ -1,10 +1,10 @@
 package com.elite4.anandan.registrationservices.service;
 
+import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
-import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -13,7 +13,8 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 
 /**
- * Local file system storage implementation
+ * Local file system storage implementation.
+ * Activated when file.storage.type=LOCAL (default).
  */
 @Service
 @Slf4j
@@ -23,8 +24,15 @@ public class LocalFileStorageService implements FileStorageService {
     @Value("${file.storage.local.path:uploads/}")
     private String localPath;
 
-    public LocalFileStorageService() {
-        // Create uploads directory if it doesn't exist
+    @PostConstruct
+    public void init() {
+        try {
+            Path dirPath = Paths.get(localPath);
+            Files.createDirectories(dirPath);
+            log.info("Local file storage initialized at: {}", dirPath.toAbsolutePath());
+        } catch (IOException e) {
+            log.error("Failed to create local storage directory: {}", localPath, e);
+        }
     }
 
     @Override
@@ -51,7 +59,11 @@ public class LocalFileStorageService implements FileStorageService {
     @Override
     public byte[] downloadFile(String filePath) {
         try {
-            Path path = Paths.get(filePath);
+            Path path = Paths.get(filePath).toAbsolutePath().normalize();
+            Path storageRoot = Paths.get(localPath).toAbsolutePath().normalize();
+            if (!path.startsWith(storageRoot)) {
+                throw new SecurityException("Access denied: file path outside storage directory");
+            }
             if (!Files.exists(path)) {
                 throw new RuntimeException("File not found: " + filePath);
             }

@@ -1,10 +1,12 @@
 package com.elite4.anandan.registrationservices.service;
 
+import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
+import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
@@ -17,7 +19,8 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 
 /**
- * AWS S3 file storage implementation
+ * AWS S3 file storage implementation.
+ * Activated when file.storage.type=S3
  */
 @Service
 @Slf4j
@@ -30,49 +33,52 @@ public class S3FileStorageService implements FileStorageService {
     @Value("${file.storage.s3.region:us-east-1}")
     private String region;
 
-    @Value("${file.storage.s3.access-key}")
+    @Value("${file.storage.s3.access-key:}")
     private String accessKey;
 
-    @Value("${file.storage.s3.secret-key}")
+    @Value("${file.storage.s3.secret-key:}")
     private String secretKey;
+
+    @Value("${file.storage.s3.prefix:colive-files/}")
+    private String keyPrefix;
 
     private S3Client s3Client;
 
-    public S3FileStorageService() {
-        initializeS3Client();
-    }
-
-    private void initializeS3Client() {
-        if (accessKey != null && !accessKey.isEmpty() && secretKey != null && !secretKey.isEmpty()) {
-            AwsBasicCredentials credentials = AwsBasicCredentials.create(accessKey, secretKey);
-            this.s3Client = S3Client.builder()
-                    .region(Region.of(region))
-                    .credentialsProvider(StaticCredentialsProvider.create(credentials))
-                    .build();
-            log.info("S3 client initialized for bucket: {}", bucketName);
-        } else {
-            log.warn("S3 credentials not configured. S3 storage will not work.");
+    @PostConstruct
+    public void init() {
+        try {
+            var builder = S3Client.builder().region(Region.of(region));
+            if (accessKey != null && !accessKey.isEmpty() && secretKey != null && !secretKey.isEmpty()) {
+                AwsBasicCredentials credentials = AwsBasicCredentials.create(accessKey, secretKey);
+                builder.credentialsProvider(StaticCredentialsProvider.create(credentials));
+                log.info("S3 client initialized with static credentials for bucket: {}", bucketName);
+            } else {
+                builder.credentialsProvider(DefaultCredentialsProvider.create());
+                log.info("S3 client initialized with default credentials for bucket: {}", bucketName);
+            }
+            this.s3Client = builder.build();
+        } catch (Exception e) {
+            log.error("Failed to initialize S3 client: {}", e.getMessage(), e);
+            throw new RuntimeException("S3 initialization failed", e);
         }
     }
 
     @Override
     public String uploadFile(String fileName, byte[] fileContent, String contentType) {
         try {
-            if (s3Client == null) {
-                throw new RuntimeException("S3 client not initialized. Check AWS credentials.");
-            }
+            String key = keyPrefix + fileName;
 
             PutObjectRequest request = PutObjectRequest.builder()
                     .bucket(bucketName)
-                    .key(fileName)
+                    .key(key)
                     .contentType(contentType)
                     .build();
 
             s3Client.putObject(request, RequestBody.fromBytes(fileContent));
 
-            String s3Url = String.format("s3://%s/%s", bucketName, fileName);
-            log.info("File uploaded to S3: {}", s3Url);
-            return s3Url;
+            String s3Path = String.format("s3://%s/%s", bucketName, key);
+            log.info("File uploaded to S3: {}", s3Path);
+            return s3Path;
         } catch (Exception e) {
             log.error("Error uploading file to S3: {}", fileName, e);
             throw new RuntimeException("Failed to upload file to S3: " + fileName, e);
@@ -82,11 +88,7 @@ public class S3FileStorageService implements FileStorageService {
     @Override
     public byte[] downloadFile(String filePath) {
         try {
-            if (s3Client == null) {
-                throw new RuntimeException("S3 client not initialized.");
-            }
-
-            String key = extractKeyFromPath(filePath);
+            String key = extractKey(filePath);
 
             GetObjectRequest request = GetObjectRequest.builder()
                     .bucket(bucketName)
@@ -103,11 +105,7 @@ public class S3FileStorageService implements FileStorageService {
     @Override
     public void deleteFile(String filePath) {
         try {
-            if (s3Client == null) {
-                throw new RuntimeException("S3 client not initialized.");
-            }
-
-            String key = extractKeyFromPath(filePath);
+            String key = extractKey(filePath);
 
             DeleteObjectRequest request = DeleteObjectRequest.builder()
                     .bucket(bucketName)
@@ -125,11 +123,7 @@ public class S3FileStorageService implements FileStorageService {
     @Override
     public boolean fileExists(String filePath) {
         try {
-            if (s3Client == null) {
-                return false;
-            }
-
-            String key = extractKeyFromPath(filePath);
+            String key = extractKey(filePath);
 
             HeadObjectRequest request = HeadObjectRequest.builder()
                     .bucket(bucketName)
@@ -139,7 +133,7 @@ public class S3FileStorageService implements FileStorageService {
             s3Client.headObject(request);
             return true;
         } catch (Exception e) {
-            log.debug("File not found in S3 or error occurred: {}", filePath);
+            log.debug("File not found in S3: {}", filePath);
             return false;
         }
     }
@@ -148,8 +142,7 @@ public class S3FileStorageService implements FileStorageService {
     public String generateFileName(String registrationId, String originalFileName, String fileType) {
         String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
         String extension = getFileExtension(originalFileName);
-        return String.format("registrations/%s/%s/%s_%s_%s%s",
-                registrationId.substring(0, 2), registrationId, fileType, timestamp,
+        return String.format("%s_%s_%s_%s%s", registrationId, fileType, timestamp,
                 System.nanoTime(), extension);
     }
 
@@ -161,10 +154,26 @@ public class S3FileStorageService implements FileStorageService {
         return "";
     }
 
-    private String extractKeyFromPath(String filePath) {
-        if (filePath.startsWith("s3://")) {
-            return filePath.substring((bucketName + 5).length() + 1);
+    /**
+     * Extract S3 object key from a stored path.
+     * Handles both "s3://bucket/key" and plain key formats.
+     */
+    private String extractKey(String filePath) {
+        if (filePath == null) {
+            throw new IllegalArgumentException("File path cannot be null");
         }
+        // Handle s3://bucket/key format
+        String s3Prefix = "s3://" + bucketName + "/";
+        if (filePath.startsWith(s3Prefix)) {
+            return filePath.substring(s3Prefix.length());
+        }
+        // Handle s3:// with different bucket (shouldn't happen, but be safe)
+        if (filePath.startsWith("s3://")) {
+            String withoutScheme = filePath.substring(5);
+            int slashIndex = withoutScheme.indexOf('/');
+            return slashIndex >= 0 ? withoutScheme.substring(slashIndex + 1) : withoutScheme;
+        }
+        // Already a plain key
         return filePath;
     }
 }

@@ -25,7 +25,16 @@ public class ColiveNameAndRooms {
        Bank Details
        ============================ */
     @Valid
-    private BankDetails bankDetails;
+    private List<BankDetails> bankDetailsList;
+
+    /* ============================
+       KYC / Business Details (for Razorpay Route onboarding)
+       ============================ */
+    private String panNumber;
+    private String gstNumber;
+    private String legalBusinessName;
+    private String businessType;
+    private String businessAddress;
 
     @NotEmpty(message = "At least one ROOM OR HOUSE details are required")
     @Size(max = 500, message = "No more than 500 client names are allowed")

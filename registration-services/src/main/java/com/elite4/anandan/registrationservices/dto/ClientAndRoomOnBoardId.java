@@ -10,7 +10,15 @@ public class ClientAndRoomOnBoardId {
     private String roomOnBoardId;
     private String clientCategory;
     @Valid
-    private BankDetails bankDetails;
+    private List<BankDetails> bankDetailsList;
+
+    // KYC / Business Details (for Razorpay Route onboarding)
+    private String panNumber;
+    private String gstNumber;
+    private String legalBusinessName;
+    private String businessType;
+    private String businessAddress;
+
     private List<String> licenseDocumentsPath;
     private String documentType;
     private String documentNumber;

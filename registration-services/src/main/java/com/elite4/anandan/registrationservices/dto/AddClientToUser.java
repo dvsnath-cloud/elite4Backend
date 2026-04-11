@@ -5,6 +5,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import lombok.Data;
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -30,7 +31,14 @@ public class AddClientToUser {
     private Set<@Valid Room> rooms;
 
     @Valid
-    private BankDetails bankDetails;
+    private List<BankDetails> bankDetailsList;
+
+    // KYC / Business Details (for Razorpay Route onboarding)
+    private String panNumber;
+    private String gstNumber;
+    private String legalBusinessName;
+    private String businessType;
+    private String businessAddress;
 
     public enum categoryValues {
         HOUSE, PG, FLAT, HOSTEL

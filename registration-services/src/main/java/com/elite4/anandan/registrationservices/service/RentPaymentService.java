@@ -81,23 +81,23 @@ public class RentPaymentService {
                                 .toList());
                 
                 clientDetail = user.getClientDetails().stream()
-                        .filter(c -> c.getBankDetails() != null)
+                        .filter(c -> c.getBankDetailsList() != null && !c.getBankDetailsList().isEmpty())
                         .findFirst()
                         .orElse(null);
             }
             
-            if (clientDetail != null && clientDetail.getBankDetails() != null) {
+            if (clientDetail != null && clientDetail.getBankDetailsList() != null && !clientDetail.getBankDetailsList().isEmpty()) {
                 response.put("success", true);
                 response.put("message", "Bank details retrieved successfully");
-                response.put("bankDetails", clientDetail.getBankDetails());
+                response.put("bankDetailsList", clientDetail.getBankDetailsList());
                 response.put("coliveName", clientDetail.getColiveName());
                 response.put("coliveOwnerUsername", coliveUserName);
-                log.info("✅ Bank details found for property {}: {}", coliveName, clientDetail.getBankDetails().getBankName());
+                log.info("✅ Bank details found for property {}: {}", coliveName, clientDetail.getBankDetailsList().get(0).getBankName());
             } else {
                 log.warn("No bank details found for property: {}", coliveName);
                 response.put("success", true);
                 response.put("message", "Bank details not configured for this property");
-                response.put("bankDetails", null);
+                response.put("bankDetailsList", null);
                 response.put("coliveName", coliveName);
                 response.put("coliveOwnerUsername", coliveUserName);
             }

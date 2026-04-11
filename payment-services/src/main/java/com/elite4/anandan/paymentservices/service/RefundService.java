@@ -6,7 +6,6 @@ import com.elite4.anandan.paymentservices.dto.RefundRequest;
 import com.elite4.anandan.paymentservices.dto.RefundResponse;
 import com.elite4.anandan.paymentservices.repository.PaymentRefundRepository;
 import com.elite4.anandan.paymentservices.repository.PaymentTransferRepository;
-import com.razorpay.Payment;
 import com.razorpay.RazorpayClient;
 import com.razorpay.Refund;
 import lombok.extern.slf4j.Slf4j;
@@ -65,8 +64,7 @@ public class RefundService {
             log.info("Razorpay API → POST /v1/payments/{}/refund, payload={}", paymentId, refundReq);
 
             // Execute refund
-            Payment payment = razorpayClient.payments.fetch(paymentId);
-            Refund refund = payment.refund(refundReq);
+            Refund refund = razorpayClient.payments.refund(paymentId, refundReq);
 
             String razorpayRefundId = refund.get("id").toString();
             int refundAmount = refund.has("amount") ? Integer.parseInt(refund.get("amount").toString()) : request.getAmount();

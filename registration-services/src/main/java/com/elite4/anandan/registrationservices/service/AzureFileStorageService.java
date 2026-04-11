@@ -4,6 +4,7 @@ import com.azure.storage.blob.BlobClient;
 import com.azure.storage.blob.BlobContainerClient;
 import com.azure.storage.blob.BlobServiceClient;
 import com.azure.storage.blob.BlobServiceClientBuilder;
+import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -13,7 +14,8 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 
 /**
- * Azure Blob Storage file storage implementation
+ * Azure Blob Storage file storage implementation.
+ * Activated when file.storage.type=AZURE
  */
 @Service
 @Slf4j
@@ -29,51 +31,52 @@ public class AzureFileStorageService implements FileStorageService {
     @Value("${file.storage.azure.account-key}")
     private String accountKey;
 
-    private BlobServiceClient blobServiceClient;
+    @Value("${file.storage.azure.prefix:colive-files/}")
+    private String blobPrefix;
+
     private BlobContainerClient containerClient;
 
-    public AzureFileStorageService() {
-        initializeAzureClient();
-    }
+    @PostConstruct
+    public void init() {
+        try {
+            if (accountName == null || accountName.isEmpty() || accountKey == null || accountKey.isEmpty()) {
+                throw new RuntimeException("Azure Storage account name and key must be configured");
+            }
 
-    private void initializeAzureClient() {
-        if (accountName != null && !accountName.isEmpty() && accountKey != null && !accountKey.isEmpty()) {
             String connectionString = String.format(
                     "DefaultEndpointsProtocol=https;AccountName=%s;AccountKey=%s;EndpointSuffix=core.windows.net",
                     accountName, accountKey
             );
 
-            this.blobServiceClient = new BlobServiceClientBuilder()
+            BlobServiceClient blobServiceClient = new BlobServiceClientBuilder()
                     .connectionString(connectionString)
                     .buildClient();
 
             this.containerClient = blobServiceClient.getBlobContainerClient(containerName);
 
-            // Create container if it doesn't exist
             if (!containerClient.exists()) {
                 containerClient.create();
                 log.info("Azure container created: {}", containerName);
             }
 
             log.info("Azure Blob Storage client initialized for container: {}", containerName);
-        } else {
-            log.warn("Azure credentials not configured. Azure storage will not work.");
+        } catch (Exception e) {
+            log.error("Failed to initialize Azure Blob Storage client: {}", e.getMessage(), e);
+            throw new RuntimeException("Azure Blob Storage initialization failed", e);
         }
     }
 
     @Override
     public String uploadFile(String fileName, byte[] fileContent, String contentType) {
         try {
-            if (containerClient == null) {
-                throw new RuntimeException("Azure Blob Storage client not initialized. Check Azure credentials.");
-            }
+            String blobName = blobPrefix + fileName;
 
-            BlobClient blobClient = containerClient.getBlobClient(fileName);
+            BlobClient blobClient = containerClient.getBlobClient(blobName);
             blobClient.upload(new ByteArrayInputStream(fileContent), fileContent.length, true);
 
-            String azureUrl = blobClient.getBlobUrl();
-            log.info("File uploaded to Azure Blob Storage: {}", azureUrl);
-            return azureUrl;
+            String azurePath = String.format("azure://%s/%s", containerName, blobName);
+            log.info("File uploaded to Azure Blob Storage: {}", azurePath);
+            return azurePath;
         } catch (Exception e) {
             log.error("Error uploading file to Azure: {}", fileName, e);
             throw new RuntimeException("Failed to upload file to Azure: " + fileName, e);
@@ -83,10 +86,6 @@ public class AzureFileStorageService implements FileStorageService {
     @Override
     public byte[] downloadFile(String filePath) {
         try {
-            if (containerClient == null) {
-                throw new RuntimeException("Azure Blob Storage client not initialized.");
-            }
-
             String blobName = extractBlobName(filePath);
             BlobClient blobClient = containerClient.getBlobClient(blobName);
 
@@ -100,13 +99,9 @@ public class AzureFileStorageService implements FileStorageService {
     @Override
     public void deleteFile(String filePath) {
         try {
-            if (containerClient == null) {
-                throw new RuntimeException("Azure Blob Storage client not initialized.");
-            }
-
             String blobName = extractBlobName(filePath);
             BlobClient blobClient = containerClient.getBlobClient(blobName);
-            blobClient.delete();
+            blobClient.deleteIfExists();
 
             log.info("File deleted from Azure Blob Storage: {}", filePath);
         } catch (Exception e) {
@@ -118,13 +113,8 @@ public class AzureFileStorageService implements FileStorageService {
     @Override
     public boolean fileExists(String filePath) {
         try {
-            if (containerClient == null) {
-                return false;
-            }
-
             String blobName = extractBlobName(filePath);
             BlobClient blobClient = containerClient.getBlobClient(blobName);
-
             return blobClient.exists();
         } catch (Exception e) {
             log.debug("File not found in Azure or error occurred: {}", filePath);
@@ -136,8 +126,7 @@ public class AzureFileStorageService implements FileStorageService {
     public String generateFileName(String registrationId, String originalFileName, String fileType) {
         String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
         String extension = getFileExtension(originalFileName);
-        return String.format("registrations/%s/%s/%s_%s_%s%s",
-                registrationId.substring(0, 2), registrationId, fileType, timestamp,
+        return String.format("%s_%s_%s_%s%s", registrationId, fileType, timestamp,
                 System.nanoTime(), extension);
     }
 
@@ -149,11 +138,28 @@ public class AzureFileStorageService implements FileStorageService {
         return "";
     }
 
+    /**
+     * Extract blob name from a stored path.
+     * Handles "azure://container/blobName", full HTTPS URLs, and plain blob names.
+     */
     private String extractBlobName(String filePath) {
-        // Extract blob name from the full URL or path
-        if (filePath.contains("/")) {
-            return filePath.substring(filePath.lastIndexOf("/") + 1);
+        if (filePath == null) {
+            throw new IllegalArgumentException("File path cannot be null");
         }
+        // Handle azure://container/blobName format
+        String azurePrefix = "azure://" + containerName + "/";
+        if (filePath.startsWith(azurePrefix)) {
+            return filePath.substring(azurePrefix.length());
+        }
+        // Handle full HTTPS blob URL
+        if (filePath.startsWith("https://")) {
+            String containerPath = "/" + containerName + "/";
+            int idx = filePath.indexOf(containerPath);
+            if (idx >= 0) {
+                return filePath.substring(idx + containerPath.length());
+            }
+        }
+        // Already a plain blob name
         return filePath;
     }
 }

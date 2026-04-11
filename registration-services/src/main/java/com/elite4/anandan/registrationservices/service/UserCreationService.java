@@ -34,15 +34,17 @@ public class UserCreationService {
     private final PhoneService phoneService;
     private final RoomsOrHouseRepository roomsOrHouseRepository;
     private final FileStorageService fileStorageService;
+    private final PaymentRouteClient paymentRouteClient;
 
     public UserCreationService(UserRepository userRepository,
-                               PasswordEncoder passwordEncoder, RoleRepository roleRepository, PhoneService phoneService, RoomsOrHouseRepository roomsOrHouseRepository, FileStorageService fileStorageService) {
+                               PasswordEncoder passwordEncoder, RoleRepository roleRepository, PhoneService phoneService, RoomsOrHouseRepository roomsOrHouseRepository, FileStorageService fileStorageService, PaymentRouteClient paymentRouteClient) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.roleRepository = roleRepository;
         this.phoneService = phoneService;
         this.roomsOrHouseRepository = roomsOrHouseRepository;
         this.fileStorageService = fileStorageService;
+        this.paymentRouteClient = paymentRouteClient;
     }
 
     /**
@@ -146,7 +148,12 @@ public class UserCreationService {
                     clientAndRoomOnBoardId.setColiveName(clientName.getColiveName());
                     //clientAndRoomOnBoardId.setUploadedPhotos();
                     clientAndRoomOnBoardId.setClientCategory(String.valueOf(clientName.getCategoryType()));
-                    clientAndRoomOnBoardId.setBankDetails(clientName.getBankDetails());
+                    clientAndRoomOnBoardId.setBankDetailsList(clientName.getBankDetailsList());
+                    clientAndRoomOnBoardId.setPanNumber(clientName.getPanNumber());
+                    clientAndRoomOnBoardId.setGstNumber(clientName.getGstNumber());
+                    clientAndRoomOnBoardId.setLegalBusinessName(clientName.getLegalBusinessName());
+                    clientAndRoomOnBoardId.setBusinessType(clientName.getBusinessType());
+                    clientAndRoomOnBoardId.setBusinessAddress(clientName.getBusinessAddress());
                     // Step 3: Upload property photos for each coLive and save to DB
                     if (propertyPhotosMap != null && !propertyPhotosMap.isEmpty()) {
                         java.util.List<byte[]> photosList = propertyPhotosMap.get(clientName.getColiveName());
@@ -216,6 +223,20 @@ public class UserCreationService {
                 UserResponse response = toUserResponse(saved);
                 log.info("✅ SIGNUP SUCCESS - User created: Username: {}, Email: {}, Phone: {}",
                         saved.getUsername(), saved.getEmail(), saved.getPhoneE164());
+
+                // Sync bank accounts to Route API (Razorpay linked accounts)
+                if (request.getColiveDetails() != null) {
+                    for (ColiveNameAndRooms colive : request.getColiveDetails()) {
+                        paymentRouteClient.syncBankAccounts(
+                                saved.getUsername(), colive.getColiveName(),
+                                saved.getEmail(), saved.getPhoneRaw(),
+                                colive.getBankDetailsList(),
+                                colive.getPanNumber(), colive.getGstNumber(),
+                                colive.getLegalBusinessName(), colive.getBusinessType(),
+                                colive.getBusinessAddress());
+                    }
+                }
+
                 return ResponseEntity
                         .status(HttpStatus.CREATED)
                         .body(response);
@@ -324,7 +345,12 @@ public class UserCreationService {
         }
         clientAndRoomOnBoardId.setColiveName(request.getColiveName());
         clientAndRoomOnBoardId.setClientCategory(String.valueOf(request.getCategoryType()));
-        clientAndRoomOnBoardId.setBankDetails(request.getBankDetails());
+        clientAndRoomOnBoardId.setBankDetailsList(request.getBankDetailsList());
+        clientAndRoomOnBoardId.setPanNumber(request.getPanNumber());
+        clientAndRoomOnBoardId.setGstNumber(request.getGstNumber());
+        clientAndRoomOnBoardId.setLegalBusinessName(request.getLegalBusinessName());
+        clientAndRoomOnBoardId.setBusinessType(request.getBusinessType());
+        clientAndRoomOnBoardId.setBusinessAddress(request.getBusinessAddress());
         // Step 2: Upload property photos if provided
         java.util.List<String> uploadedPaths = new java.util.ArrayList<>();
         if (propertyPhotos != null && !propertyPhotos.isEmpty()) {
@@ -405,6 +431,16 @@ public class UserCreationService {
                     }
 
                     User saved = userRepository.save(u);
+
+                    // Sync bank accounts to Route API (Razorpay linked accounts)
+                    paymentRouteClient.syncBankAccounts(
+                            saved.getUsername(), request.getColiveName(),
+                            saved.getEmail(), saved.getPhoneRaw(),
+                            request.getBankDetailsList(),
+                            request.getPanNumber(), request.getGstNumber(),
+                            request.getLegalBusinessName(), request.getBusinessType(),
+                            request.getBusinessAddress());
+
                     return ResponseEntity.ok(toUserResponse(saved));
                 })
                 .orElse(ResponseEntity.notFound().build());
@@ -866,7 +902,7 @@ public class UserCreationService {
                 coliveNameAndRooms.setRooms(roomNumbers);
                 String category = clientAndRoomOnBoardId.getClientCategory();
                 coliveNameAndRooms.setCategoryType(ColiveNameAndRooms.categoryValues.valueOf(category));
-                coliveNameAndRooms.setBankDetails(clientAndRoomOnBoardId.getBankDetails());
+                coliveNameAndRooms.setBankDetailsList(clientAndRoomOnBoardId.getBankDetailsList());
                 // Map license documents and photos from entity to DTO
                 coliveNameAndRooms.setLicenseDocumentsPath(clientAndRoomOnBoardId.getLicenseDocumentsPath());
                 coliveNameAndRooms.setUploadedPhotos(clientAndRoomOnBoardId.getUploadedPhotos());

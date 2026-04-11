@@ -423,6 +423,52 @@ public class UserController {
             @PathVariable String coliveName) {
         return userCreationService.getLicenseDocumentsForCoLive(username, coliveName);
     }
+
+    /**
+     * Download a single uploaded photo by file path.
+     * The filePath must match a path stored in the user's uploadedPhotos list.
+     */
+    @GetMapping("/download-photo")
+    @PreAuthorize("hasAnyRole('USER','ADMIN','MODERATOR')")
+    public ResponseEntity<?> downloadPhoto(@RequestParam String filePath) {
+        return userCreationService.downloadUploadedPhoto(filePath);
+    }
+
+    /**
+     * Download a single license document by file path.
+     * The filePath must match a path stored in the user's licenseDocumentsPath list.
+     */
+    @GetMapping("/download-document")
+    @PreAuthorize("hasAnyRole('USER','ADMIN','MODERATOR')")
+    public ResponseEntity<?> downloadDocument(@RequestParam String filePath) {
+        return userCreationService.downloadLicenseDocument(filePath);
+    }
+
+    /**
+     * Delete a property photo for a user's specific coLive.
+     * Requires ADMIN or MODERATOR role.
+     */
+    @DeleteMapping("/user/{username}/coLive/{coliveName}/photo")
+    @PreAuthorize("hasAnyRole('ADMIN','MODERATOR')")
+    public ResponseEntity<?> deletePhoto(
+            @PathVariable String username,
+            @PathVariable String coliveName,
+            @RequestParam String filePath) {
+        return userCreationService.deleteUploadedPhoto(username, coliveName, filePath);
+    }
+
+    /**
+     * Delete a license document for a user's specific coLive.
+     * Requires ADMIN or MODERATOR role.
+     */
+    @DeleteMapping("/user/{username}/coLive/{coliveName}/document")
+    @PreAuthorize("hasAnyRole('ADMIN','MODERATOR')")
+    public ResponseEntity<?> deleteDocument(
+            @PathVariable String username,
+            @PathVariable String coliveName,
+            @RequestParam String filePath) {
+        return userCreationService.deleteLicenseDocument(username, coliveName, filePath);
+    }
 }
 
 

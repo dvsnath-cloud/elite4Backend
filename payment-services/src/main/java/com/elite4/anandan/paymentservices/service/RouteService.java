@@ -6,7 +6,6 @@ import com.elite4.anandan.paymentservices.dto.TransferRequest;
 import com.elite4.anandan.paymentservices.dto.TransferResponse;
 import com.elite4.anandan.paymentservices.repository.LinkedAccountRepository;
 import com.elite4.anandan.paymentservices.repository.PaymentTransferRepository;
-import com.razorpay.Payment;
 import com.razorpay.RazorpayClient;
 import com.razorpay.Transfer;
 import lombok.extern.slf4j.Slf4j;
@@ -137,8 +136,8 @@ public class RouteService {
                     razorpayPaymentId, transferRequest);
 
             // Execute transfer via Razorpay SDK
-            Payment payment = razorpayClient.payments.fetch(razorpayPaymentId);
-            Transfer transfer = payment.transfer(transferRequest);
+            List<Transfer> transfers = razorpayClient.payments.transfer(razorpayPaymentId, transferRequest);
+            Transfer transfer = transfers.get(0);
             String razorpayTransferId = transfer.get("id").toString();
 
             log.info("Razorpay transfer created: transferId={}, amount={}, status={}",

@@ -197,7 +197,7 @@ public class AdminService {
                 if (category != null) {
                     coliveNameAndRooms.setCategoryType(ColiveNameAndRooms.categoryValues.valueOf(category));
                 }
-                coliveNameAndRooms.setBankDetails(clientDetail.getBankDetails());
+                coliveNameAndRooms.setBankDetailsList(clientDetail.getBankDetailsList());
                 // Map license documents and photos from entity to DTO
                 coliveNameAndRooms.setLicenseDocumentsPath(clientDetail.getLicenseDocumentsPath());
                 coliveNameAndRooms.setUploadedPhotos(clientDetail.getUploadedPhotos());
@@ -282,7 +282,7 @@ public class AdminService {
                         }
                         
                         // Set bank details
-                        result.setBankDetails(clientDetail.getBankDetails());
+                        result.setBankDetailsList(clientDetail.getBankDetailsList());
                         
                         // Set uploaded photos
                         result.setUploadedPhotos(clientDetail.getUploadedPhotos());
