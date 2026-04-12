@@ -379,6 +379,14 @@ public class UserController {
         return ResponseEntity.ok(userResponse);
     }
 
+    @PostMapping("/admin/user/{username}/colive/{coLiveName}/bank-details")
+    @PreAuthorize("hasAnyRole('ADMIN','MODERATOR')")
+    public ResponseEntity<?> addBankDetailsToColive(@PathVariable String username,
+                                                    @PathVariable String coLiveName,
+                                                    @RequestBody UpdateColiveBankDetailsRequest request) {
+        return adminService.addBankDetailsToColive(username, coLiveName, request);
+    }
+
     /**
      * Get user details by username.
      * Requires ADMIN or MODERATOR role.

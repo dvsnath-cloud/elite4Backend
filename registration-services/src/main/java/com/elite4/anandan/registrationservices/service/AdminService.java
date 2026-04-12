@@ -6,6 +6,8 @@ import com.elite4.anandan.registrationservices.dto.UserResponse;
 import com.elite4.anandan.registrationservices.dto.ColiveListItem;
 import com.elite4.anandan.registrationservices.dto.ColiveNameAndRooms;
 import com.elite4.anandan.registrationservices.dto.Room;
+import com.elite4.anandan.registrationservices.dto.BankDetails;
+import com.elite4.anandan.registrationservices.dto.UpdateColiveBankDetailsRequest;
 import com.elite4.anandan.registrationservices.model.User;
 import com.elite4.anandan.registrationservices.repository.RoleRepository;
 import com.elite4.anandan.registrationservices.repository.UserRepository;
@@ -13,7 +15,9 @@ import com.elite4.anandan.registrationservices.repository.RoomsOrHouseRepository
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 
+import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
@@ -308,5 +312,80 @@ public class AdminService {
     public UserResponse getUserWithRoles(String username) {
         Optional<User> user = userRepository.findByUsername(username);
         return user.map(this::toUserResponse).orElse(null);
+    }
+
+    public ResponseEntity<?> addBankDetailsToColive(String username, String coliveName,
+                                                    UpdateColiveBankDetailsRequest request) {
+        Optional<User> userOpt = userRepository.findByUsername(username);
+        if (userOpt.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+
+        if (coliveName == null || coliveName.isBlank()) {
+            return ResponseEntity.badRequest().body("coliveName is required");
+        }
+        if (request.getBankName() == null || request.getBankName().isBlank()) {
+            return ResponseEntity.badRequest().body("bankName is required");
+        }
+        if (request.getAccountNumber() == null || request.getAccountNumber().isBlank()) {
+            return ResponseEntity.badRequest().body("accountNumber is required");
+        }
+        if (request.getIfscCode() == null || request.getIfscCode().isBlank()) {
+            return ResponseEntity.badRequest().body("ifscCode is required");
+        }
+        if (request.getBeneficiaryName() == null || request.getBeneficiaryName().isBlank()) {
+            return ResponseEntity.badRequest().body("beneficiaryName is required");
+        }
+
+        User user = userOpt.get();
+        Set<ClientAndRoomOnBoardId> clientDetails = user.getClientDetails();
+        if (clientDetails == null || clientDetails.isEmpty()) {
+            return ResponseEntity.badRequest().body("User does not have any properties assigned");
+        }
+
+        ClientAndRoomOnBoardId targetClient = null;
+        for (ClientAndRoomOnBoardId clientDetail : clientDetails) {
+            if (coliveName.equals(clientDetail.getColiveName())) {
+                targetClient = clientDetail;
+                break;
+            }
+        }
+
+        if (targetClient == null) {
+            return ResponseEntity.badRequest().body("Property '" + coliveName + "' not found for user '" + username + "'");
+        }
+
+        List<BankDetails> existingBankDetails = targetClient.getBankDetailsList() != null
+                ? new ArrayList<>(targetClient.getBankDetailsList())
+                : new ArrayList<>();
+
+        Iterator<BankDetails> iterator = existingBankDetails.iterator();
+        while (iterator.hasNext()) {
+            BankDetails existing = iterator.next();
+            if (request.getAccountNumber().equals(existing.getAccountNumber())) {
+                iterator.remove();
+                break;
+            }
+        }
+
+        BankDetails bankDetails = new BankDetails();
+        bankDetails.setBankName(request.getBankName());
+        bankDetails.setAccountNumber(request.getAccountNumber());
+        bankDetails.setIfscCode(request.getIfscCode());
+        bankDetails.setAccountHolderName(request.getBeneficiaryName());
+        bankDetails.setBranchCode(
+                request.getBranchCode() != null && !request.getBranchCode().isBlank()
+                        ? request.getBranchCode()
+                        : request.getIfscCode()
+        );
+        bankDetails.setBranchAddress(request.getBranchAddress());
+        bankDetails.setUpiId(request.getUpiId() != null ? request.getUpiId() : "");
+
+        existingBankDetails.add(bankDetails);
+        targetClient.setBankDetailsList(existingBankDetails);
+
+        user.setUpdatedAt(Instant.now());
+        User saved = userRepository.save(user);
+        return ResponseEntity.ok(toUserResponse(saved));
     }
 }
