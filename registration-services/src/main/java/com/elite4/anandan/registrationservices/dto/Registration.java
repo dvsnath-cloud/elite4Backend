@@ -65,6 +65,8 @@ public class Registration {
 
     private RoomForRegistration room;
 
+    private String telegramChatId;
+
     public enum roomOccupied {
         OCCUPIED, NOT_OCCUPIED,VACATED
     }

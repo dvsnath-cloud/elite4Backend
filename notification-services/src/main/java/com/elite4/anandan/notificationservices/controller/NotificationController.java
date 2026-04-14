@@ -25,4 +25,18 @@ public class NotificationController {
         notificationService.sendSms(request);
         return ResponseEntity.status(HttpStatus.ACCEPTED).build();
     }
+
+    // WhatsApp notification endpoint (Meta Cloud API)
+    @PostMapping("/whatsapp")
+    public ResponseEntity<Void> sendWhatsapp(@RequestBody NotificationRequest request) {
+        notificationService.sendWhatsapp(request);
+        return ResponseEntity.status(HttpStatus.ACCEPTED).build();
+    }
+
+    // Telegram notification endpoint (Bot API)
+    @PostMapping("/telegram")
+    public ResponseEntity<Void> sendTelegram(@RequestBody NotificationRequest request) {
+        notificationService.sendTelegram(request);
+        return ResponseEntity.status(HttpStatus.ACCEPTED).build();
+    }
 }

@@ -7,8 +7,9 @@ import java.util.Map;
 public class NotificationRequest {
     private String email;
     private String phoneNumber;
+    private String chatId;          // Telegram chat ID
     private String subject;
     private String message;
-    private String templateName; // e.g., "registration-success", "payment-success"
+    private String templateName;    // e.g., "registration-success", "payment-success"
     private Map<String, Object> variables; // for template variables
 }

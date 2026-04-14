@@ -12,8 +12,10 @@ import com.elite4.anandan.registrationservices.model.User;
 import com.elite4.anandan.registrationservices.repository.RoleRepository;
 import com.elite4.anandan.registrationservices.repository.UserRepository;
 import com.elite4.anandan.registrationservices.repository.RoomsOrHouseRepository;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
+import lombok.extern.slf4j.Slf4j;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -25,6 +27,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
+@Slf4j
 public class AdminService {
 
     private final UserRepository userRepository;
@@ -36,6 +39,9 @@ public class AdminService {
         this.roleRepository = roleRepository;
         this.roomsOrHouseRepository = roomsOrHouseRepository;
     }
+
+    @Autowired
+    private NotificationClient notificationClient;
 
     /**
      * Get all users pending approval (inactive users).
@@ -99,6 +105,24 @@ public class AdminService {
         user.setUpdatedAt(java.time.Instant.now());
         userRepository.save(user);
 
+        // --- Notification logic: Approval ---
+        try {
+            String propertyNames = user.getClientDetails() != null
+                    ? user.getClientDetails().stream().map(ClientAndRoomOnBoardId::getColiveName).collect(Collectors.joining(", "))
+                    : "N/A";
+            String subject = "Your CoLive Connect account is approved!";
+            String message = "Dear " + (user.getUsername() != null ? user.getUsername() : "User") + ", your account has been approved by the moderator. Your properties: " + propertyNames + ". You can now log in and manage your colive.";
+            if (user.getEmail() != null && !user.getEmail().isBlank()) {
+                notificationClient.sendEmail(user.getEmail(), subject, message);
+            }
+            if (user.getPhoneRaw() != null && !user.getPhoneRaw().isBlank()) {
+                notificationClient.sendSms(user.getPhoneRaw(), message);
+                notificationClient.sendWhatsapp(user.getPhoneRaw(), message);
+            }
+        } catch (Exception ex) {
+            log.warn("Failed to send approval notifications for {}: {}", username, ex.getMessage());
+        }
+
         return ResponseEntity.ok(toUserResponse(user));
     }
 
@@ -122,6 +146,21 @@ public class AdminService {
                 }
             });
         }
+        // --- Notification logic: Rejection ---
+        try {
+            String subject = "CoLive Connect - Registration Rejected";
+            String message = "Dear " + (user.getUsername() != null ? user.getUsername() : "User") + ", your CoLive Connect registration has been reviewed and rejected. Please contact support for more information.";
+            if (user.getEmail() != null && !user.getEmail().isBlank()) {
+                notificationClient.sendEmail(user.getEmail(), subject, message);
+            }
+            if (user.getPhoneRaw() != null && !user.getPhoneRaw().isBlank()) {
+                notificationClient.sendSms(user.getPhoneRaw(), message);
+                notificationClient.sendWhatsapp(user.getPhoneRaw(), message);
+            }
+        } catch (Exception ex) {
+            log.warn("Failed to send rejection notifications for {}: {}", username, ex.getMessage());
+        }
+
         userRepository.deleteById(user.getId());
         return ResponseEntity.noContent().build();
     }
@@ -143,6 +182,21 @@ public class AdminService {
         user.setActive(false);
         user.setUpdatedAt(java.time.Instant.now());
         userRepository.save(user);
+
+        // --- Notification logic: Deactivation ---
+        try {
+            String subject = "CoLive Connect - Account Deactivated";
+            String message = "Dear " + (user.getUsername() != null ? user.getUsername() : "User") + ", your CoLive Connect account has been deactivated. Please contact the admin if you believe this is an error.";
+            if (user.getEmail() != null && !user.getEmail().isBlank()) {
+                notificationClient.sendEmail(user.getEmail(), subject, message);
+            }
+            if (user.getPhoneRaw() != null && !user.getPhoneRaw().isBlank()) {
+                notificationClient.sendSms(user.getPhoneRaw(), message);
+                notificationClient.sendWhatsapp(user.getPhoneRaw(), message);
+            }
+        } catch (Exception ex) {
+            log.warn("Failed to send deactivation notifications for {}: {}", username, ex.getMessage());
+        }
 
         return ResponseEntity.ok(toUserResponse(user));
     }
@@ -233,13 +287,30 @@ public class AdminService {
     public List<ColiveListItem> searchColiveProperties(String search) {
         List<User> users = userRepository.findAll();
         List<ColiveListItem> items = new ArrayList<>();
+        String searchLower = search.toLowerCase();
         for (User u : users) {
-            if (u.getUsername() != null && u.getUsername().toLowerCase().contains(search.toLowerCase())) {
+            boolean matched = false;
+            // Match by username
+            if (u.getUsername() != null && u.getUsername().toLowerCase().contains(searchLower)) {
                 ColiveListItem item = new ColiveListItem();
                 item.setColiveUserName(u.getUsername());
                 item.setColiveName(u.getUsername());
                 item.setCategoryType("PROPERTY");
                 items.add(item);
+                matched = true;
+            }
+            // Match by colive property names in clientDetails
+            if (u.getClientDetails() != null) {
+                for (var client : u.getClientDetails()) {
+                    if (client.getColiveName() != null && client.getColiveName().toLowerCase().contains(searchLower)) {
+                        ColiveListItem item = new ColiveListItem();
+                        item.setColiveUserName(u.getUsername());
+                        item.setColiveName(client.getColiveName());
+                        item.setCategoryType("PROPERTY");
+                        items.add(item);
+                        matched = true;
+                    }
+                }
             }
         }
         return items;
@@ -386,6 +457,22 @@ public class AdminService {
 
         user.setUpdatedAt(Instant.now());
         User saved = userRepository.save(user);
+
+        // --- Notification logic: Property Added / Bank Details Updated ---
+        try {
+            String subject = "Bank Details Updated - CoLive Connect";
+            String message = "Dear " + (user.getUsername() != null ? user.getUsername() : "User") + ", bank details for property '" + coliveName + "' have been successfully updated on your CoLive Connect account.";
+            if (user.getEmail() != null && !user.getEmail().isBlank()) {
+                notificationClient.sendEmail(user.getEmail(), subject, message);
+            }
+            if (user.getPhoneRaw() != null && !user.getPhoneRaw().isBlank()) {
+                notificationClient.sendSms(user.getPhoneRaw(), message);
+                notificationClient.sendWhatsapp(user.getPhoneRaw(), message);
+            }
+        } catch (Exception ex) {
+            log.warn("Failed to send bank details update notifications for {}: {}", username, ex.getMessage());
+        }
+
         return ResponseEntity.ok(toUserResponse(saved));
     }
 }

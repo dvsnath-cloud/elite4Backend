@@ -25,6 +25,7 @@ public class RentPaymentService {
     private final RentPaymentTransactionRepository paymentRepository;
     private final RegistrationRepository registrationRepository;
     private final UserRepository userRepository;
+    private final NotificationClient notificationClient;
     
     /**
      * Fetch bank details for a property using coliveUserName and coliveName
@@ -176,6 +177,9 @@ public class RentPaymentService {
         RentPaymentTransaction saved = paymentRepository.save(transaction);
         log.info("Cash payment recorded successfully: {}", saved.getId());
 
+        // --- Notification: Cash payment recorded ---
+        sendPaymentNotifications(saved, registration, "Cash Payment Recorded");
+
         return PaymentTransactionResponse.from(saved);
     }
 
@@ -241,6 +245,9 @@ public class RentPaymentService {
 
         RentPaymentTransaction saved = paymentRepository.save(transaction);
         log.info("Online payment recorded successfully: {}", saved.getId());
+
+        // --- Notification: Online payment recorded ---
+        sendPaymentNotifications(saved, registration, "Online Payment Recorded");
 
         return PaymentTransactionResponse.from(saved);
     }
@@ -485,6 +492,9 @@ public class RentPaymentService {
         RentPaymentTransaction saved = paymentRepository.save(transaction);
         log.info("Prorated payment recorded: {}", saved.getId());
 
+        // --- Notification: Prorated payment recorded (pending approval) ---
+        sendPaymentNotifications(saved, registration, "Prorated Payment Recorded (Pending Approval)");
+
         return PaymentTransactionResponse.from(saved);
     }
 
@@ -544,6 +554,42 @@ public class RentPaymentService {
         transaction.setUpdatedBy(moderatorUsername);
 
         RentPaymentTransaction saved = paymentRepository.save(transaction);
+
+        // --- Notification: Payment approval/rejection ---
+        try {
+            String action = request.getApprove() ? "Approved" : "Rejected";
+            String tenantSubject = "Rent Payment " + action + " - CoLive Connect";
+            String tenantMessage = "Dear " + saved.getTenantName() + ", your rent payment of ₹" + String.format("%.2f", saved.getPaidAmount())
+                    + " for " + saved.getColiveName() + " (Room: " + saved.getRoomNumber() + ") has been " + action.toLowerCase() + "."
+                    + (request.getRemarks() != null ? " Remarks: " + request.getRemarks() : "");
+            // Notify tenant
+            if (saved.getTenantEmail() != null && !saved.getTenantEmail().isBlank()) {
+                notificationClient.sendEmail(saved.getTenantEmail(), tenantSubject, tenantMessage);
+            }
+            if (saved.getTenantPhone() != null && !saved.getTenantPhone().isBlank()) {
+                notificationClient.sendSms(saved.getTenantPhone(), tenantMessage);
+                notificationClient.sendWhatsapp(saved.getTenantPhone(), tenantMessage);
+            }
+            // Notify owner
+            if (saved.getColiveOwnerUsername() != null) {
+                Optional<User> ownerOpt = userRepository.findByUsername(saved.getColiveOwnerUsername());
+                if (ownerOpt.isPresent()) {
+                    User owner = ownerOpt.get();
+                    String ownerMessage = "Payment of ₹" + String.format("%.2f", saved.getPaidAmount()) + " by tenant " + saved.getTenantName()
+                            + " for " + saved.getColiveName() + " has been " + action.toLowerCase() + " by moderator " + moderatorUsername + ".";
+                    if (owner.getEmail() != null && !owner.getEmail().isBlank()) {
+                        notificationClient.sendEmail(owner.getEmail(), tenantSubject, ownerMessage);
+                    }
+                    if (owner.getPhoneRaw() != null && !owner.getPhoneRaw().isBlank()) {
+                        notificationClient.sendSms(owner.getPhoneRaw(), ownerMessage);
+                        notificationClient.sendWhatsapp(owner.getPhoneRaw(), ownerMessage);
+                    }
+                }
+            }
+        } catch (Exception ex) {
+            log.warn("Failed to send payment approval notifications: {}", ex.getMessage());
+        }
+
         return PaymentTransactionResponse.from(saved);
     }
 
@@ -946,5 +992,48 @@ public class RentPaymentService {
         int v = n % 100;
         String suffix = (v >= 11 && v <= 13) ? "th" : suffixes[Math.min(v % 10, 3)];
         return suffix;
+    }
+
+    /**
+     * Send payment notifications to tenant and colive owner via email, SMS, and WhatsApp.
+     */
+    private void sendPaymentNotifications(RentPaymentTransaction payment, RegistrationDocument registration, String eventType) {
+        try {
+            String tenantSubject = eventType + " - CoLive Connect";
+            String roomInfo = payment.getRoomNumber() != null ? payment.getRoomNumber() : "N/A";
+            String tenantMessage = "Dear " + payment.getTenantName() + ", your rent payment of ₹" + String.format("%.2f", payment.getPaidAmount())
+                    + " for " + payment.getColiveName() + " (Room: " + roomInfo + ") has been recorded. Status: " + payment.getStatus()
+                    + ". Payment method: " + payment.getPaymentMethod() + ".";
+
+            // Notify tenant
+            if (payment.getTenantEmail() != null && !payment.getTenantEmail().isBlank()) {
+                notificationClient.sendEmail(payment.getTenantEmail(), tenantSubject, tenantMessage);
+            }
+            if (payment.getTenantPhone() != null && !payment.getTenantPhone().isBlank()) {
+                notificationClient.sendSms(payment.getTenantPhone(), tenantMessage);
+                notificationClient.sendWhatsapp(payment.getTenantPhone(), tenantMessage);
+            }
+
+            // Notify colive owner
+            if (payment.getColiveOwnerUsername() != null) {
+                Optional<User> ownerOpt = userRepository.findByUsername(payment.getColiveOwnerUsername());
+                if (ownerOpt.isPresent()) {
+                    User owner = ownerOpt.get();
+                    String ownerSubject = eventType + " - " + payment.getColiveName();
+                    String ownerMessage = "Payment of ₹" + String.format("%.2f", payment.getPaidAmount()) + " received from tenant "
+                            + payment.getTenantName() + " for property " + payment.getColiveName() + " (Room: " + roomInfo
+                            + "). Status: " + payment.getStatus() + ". Method: " + payment.getPaymentMethod() + ".";
+                    if (owner.getEmail() != null && !owner.getEmail().isBlank()) {
+                        notificationClient.sendEmail(owner.getEmail(), ownerSubject, ownerMessage);
+                    }
+                    if (owner.getPhoneRaw() != null && !owner.getPhoneRaw().isBlank()) {
+                        notificationClient.sendSms(owner.getPhoneRaw(), ownerMessage);
+                        notificationClient.sendWhatsapp(owner.getPhoneRaw(), ownerMessage);
+                    }
+                }
+            }
+        } catch (Exception ex) {
+            log.warn("Failed to send payment notifications for transaction {}: {}", payment.getId(), ex.getMessage());
+        }
     }
 }

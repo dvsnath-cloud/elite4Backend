@@ -81,4 +81,32 @@ public class NotificationClient {
             log.error("POST {} → FAILED: {}", url, e.getMessage());
         }
     }
+
+    public void sendWhatsapp(String phoneNumber, String message) {
+        String url = baseUrl + "/notifications/whatsapp";
+        Map<String, Object> req = new HashMap<>();
+        req.put("phoneNumber", phoneNumber);
+        req.put("message", message);
+        log.info("POST {} → phoneNumber={}", url, phoneNumber);
+        try {
+            restTemplate.postForLocation(url, req);
+            log.info("POST {} → WhatsApp sent successfully", url);
+        } catch (Exception e) {
+            log.error("POST {} → FAILED: {}", url, e.getMessage());
+        }
+    }
+
+    public void sendTelegram(String chatId, String message) {
+        String url = baseUrl + "/notifications/telegram";
+        Map<String, Object> req = new HashMap<>();
+        req.put("chatId", chatId);
+        req.put("message", message);
+        log.info("POST {} → chatId={}", url, chatId);
+        try {
+            restTemplate.postForLocation(url, req);
+            log.info("POST {} → Telegram sent successfully", url);
+        } catch (Exception e) {
+            log.error("POST {} → FAILED: {}", url, e.getMessage());
+        }
+    }
 }

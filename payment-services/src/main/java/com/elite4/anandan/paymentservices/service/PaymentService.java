@@ -93,11 +93,16 @@ public class PaymentService {
         variables.put("orderId", order.get("id"));
         variables.put("paymentFor", defaultValue(request.getPaymentFor(), "monthly_rent"));
 
+        String message = "Your payment order " + order.get("id") + " has been created for INR " + order.get("amount") + ".";
         if (request.getEmail() != null && !request.getEmail().isBlank()) {
             notificationClient.sendEmailWithTemplate(request.getEmail(), "Payment Initiated", "payment-success", variables);
         }
         if (request.getPhoneNumber() != null && !request.getPhoneNumber().isBlank()) {
-            notificationClient.sendSms(request.getPhoneNumber(), "Your payment order " + order.get("id") + " has been created for INR " + order.get("amount") + ".");
+            notificationClient.sendSms(request.getPhoneNumber(), message);
+            notificationClient.sendWhatsapp(request.getPhoneNumber(), message);
+        }
+        if (request.getTelegramChatId() != null && !request.getTelegramChatId().isBlank()) {
+            notificationClient.sendTelegram(request.getTelegramChatId(), message);
         }
     }
 
@@ -113,11 +118,16 @@ public class PaymentService {
         variables.put("paymentId", request.getRazorpayPaymentId());
         variables.put("paymentFor", defaultValue(request.getPaymentFor(), "monthly_rent"));
 
+        String message = "Payment received successfully. Payment ID: " + request.getRazorpayPaymentId();
         if (request.getEmail() != null && !request.getEmail().isBlank()) {
             notificationClient.sendEmailWithTemplate(request.getEmail(), "Payment Successful", "payment-success", variables);
         }
         if (request.getPhoneNumber() != null && !request.getPhoneNumber().isBlank()) {
-            notificationClient.sendSms(request.getPhoneNumber(), "Payment received successfully. Payment ID: " + request.getRazorpayPaymentId());
+            notificationClient.sendSms(request.getPhoneNumber(), message);
+            notificationClient.sendWhatsapp(request.getPhoneNumber(), message);
+        }
+        if (request.getTelegramChatId() != null && !request.getTelegramChatId().isBlank()) {
+            notificationClient.sendTelegram(request.getTelegramChatId(), message);
         }
     }
 

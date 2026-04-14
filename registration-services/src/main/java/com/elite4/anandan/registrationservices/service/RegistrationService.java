@@ -58,6 +58,49 @@ public class RegistrationService {
             throw new IllegalArgumentException("Client username must be provided for registration");
         }
 
+        // --- Notification logic: Onboarded/Registered ---
+        try {
+            String subject = "Welcome to CoLive Connect!";
+            String message = "Dear " + (dto.getFname() != null ? dto.getFname() : "User") + ", you have been successfully onboarded to CoLive Connect.";
+            if (dto.getEmail() != null && !dto.getEmail().isBlank()) {
+                notificationClient.sendEmail(dto.getEmail(), subject, message);
+            }
+            if (dto.getContactNo() != null && !dto.getContactNo().isBlank()) {
+                notificationClient.sendSms(dto.getContactNo(), message);
+                notificationClient.sendWhatsapp(dto.getContactNo(), message);
+            }
+            // If you have a Telegram chatId, send there as well (extend as needed)
+            if (dto.getTelegramChatId() != null && !dto.getTelegramChatId().isBlank()) {
+                notificationClient.sendTelegram(dto.getTelegramChatId(), message);
+            }
+        } catch (Exception ex) {
+            log.warn("Failed to send onboarding notifications: {}", ex.getMessage());
+        }
+
+        // --- Notification logic: Notify CoLive owner about new tenant ---
+        try {
+            if (dto.getColiveUserName() != null && !dto.getColiveUserName().isBlank()) {
+                Optional<User> ownerOpt = userRepository.findByUsername(dto.getColiveUserName());
+                if (ownerOpt.isPresent()) {
+                    User owner = ownerOpt.get();
+                    String roomInfo = room != null && room.getRoomNumber() != null ? room.getRoomNumber()
+                            : (room != null && room.getHouseNumber() != null ? room.getHouseNumber() : "N/A");
+                    String ownerSubject = "New Tenant Onboarded - " + dto.getColiveName();
+                    String ownerMessage = "Dear " + owner.getUsername() + ", a new tenant '" + dto.getFname() + " " + (dto.getLname() != null ? dto.getLname() : "")
+                            + "' has been onboarded to your property '" + dto.getColiveName() + "', Room/House: " + roomInfo + ". Contact: " + dto.getContactNo() + ".";
+                    if (owner.getEmail() != null && !owner.getEmail().isBlank()) {
+                        notificationClient.sendEmail(owner.getEmail(), ownerSubject, ownerMessage);
+                    }
+                    if (owner.getPhoneRaw() != null && !owner.getPhoneRaw().isBlank()) {
+                        notificationClient.sendSms(owner.getPhoneRaw(), ownerMessage);
+                        notificationClient.sendWhatsapp(owner.getPhoneRaw(), ownerMessage);
+                    }
+                }
+            }
+        } catch (Exception ex) {
+            log.warn("Failed to send owner notification for tenant onboarding: {}", ex.getMessage());
+        }
+
         // Validate that contactNo is provided (required field)
         if (dto.getContactNo() == null || dto.getContactNo().trim().isEmpty()) {
             throw new IllegalArgumentException("Contact number must be provided for registration");

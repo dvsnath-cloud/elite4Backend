@@ -35,9 +35,10 @@ public class UserCreationService {
     private final RoomsOrHouseRepository roomsOrHouseRepository;
     private final FileStorageService fileStorageService;
     private final PaymentRouteClient paymentRouteClient;
+    private final NotificationClient notificationClient;
 
     public UserCreationService(UserRepository userRepository,
-                               PasswordEncoder passwordEncoder, RoleRepository roleRepository, PhoneService phoneService, RoomsOrHouseRepository roomsOrHouseRepository, FileStorageService fileStorageService, PaymentRouteClient paymentRouteClient) {
+                               PasswordEncoder passwordEncoder, RoleRepository roleRepository, PhoneService phoneService, RoomsOrHouseRepository roomsOrHouseRepository, FileStorageService fileStorageService, PaymentRouteClient paymentRouteClient, NotificationClient notificationClient) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.roleRepository = roleRepository;
@@ -45,6 +46,7 @@ public class UserCreationService {
         this.roomsOrHouseRepository = roomsOrHouseRepository;
         this.fileStorageService = fileStorageService;
         this.paymentRouteClient = paymentRouteClient;
+        this.notificationClient = notificationClient;
     }
 
     /**
@@ -234,6 +236,53 @@ public class UserCreationService {
                                 colive.getPanNumber(), colive.getGstNumber(),
                                 colive.getLegalBusinessName(), colive.getBusinessType(),
                                 colive.getBusinessAddress());
+                    }
+                }
+
+                // --- Notification: CoLive user registered/onboarded ---
+                try {
+                    String propertyNames = request.getColiveDetails() != null
+                            ? request.getColiveDetails().stream().map(ColiveNameAndRooms::getColiveName).collect(java.util.stream.Collectors.joining(", "))
+                            : "N/A";
+                    boolean isPending = !saved.isActive();
+                    String subject = isPending
+                            ? "CoLive Connect - Registration Received"
+                            : "Welcome to CoLive Connect!";
+                    String message = isPending
+                            ? "Dear " + saved.getUsername() + ", your registration with CoLive Connect has been received and is pending moderator approval. Properties: " + propertyNames + ". You will be notified once approved."
+                            : "Dear " + saved.getUsername() + ", welcome to CoLive Connect! Your account is now active. Properties: " + propertyNames + ".";
+                    if (saved.getEmail() != null && !saved.getEmail().isBlank()) {
+                        notificationClient.sendEmail(saved.getEmail(), subject, message);
+                    }
+                    if (saved.getPhoneRaw() != null && !saved.getPhoneRaw().isBlank()) {
+                        notificationClient.sendSms(saved.getPhoneRaw(), message);
+                        notificationClient.sendWhatsapp(saved.getPhoneRaw(), message);
+                    }
+                } catch (Exception ex) {
+                    log.warn("Failed to send signup notifications for {}: {}", saved.getUsername(), ex.getMessage());
+                }
+
+                // --- Notification: Notify admins/moderators about pending approval request ---
+                if (!saved.isActive()) {
+                    try {
+                        String approvalSubject = "New CoLive Registration Pending Approval";
+                        String approvalMessage = "A new CoLive owner '" + saved.getUsername() + "' has registered and is awaiting your approval. Email: "
+                                + (saved.getEmail() != null ? saved.getEmail() : "N/A") + ", Phone: " + (saved.getPhoneRaw() != null ? saved.getPhoneRaw() : "N/A") + ".";
+                        List<User> admins = userRepository.findAll().stream()
+                                .filter(u -> u.isActive() && u.getRoleIds() != null
+                                        && (u.getRoleIds().stream().anyMatch(r -> r.contains("ADMIN") || r.contains("MODERATOR"))))
+                                .toList();
+                        for (User admin : admins) {
+                            if (admin.getEmail() != null && !admin.getEmail().isBlank()) {
+                                notificationClient.sendEmail(admin.getEmail(), approvalSubject, approvalMessage);
+                            }
+                            if (admin.getPhoneRaw() != null && !admin.getPhoneRaw().isBlank()) {
+                                notificationClient.sendSms(admin.getPhoneRaw(), approvalMessage);
+                                notificationClient.sendWhatsapp(admin.getPhoneRaw(), approvalMessage);
+                            }
+                        }
+                    } catch (Exception ex) {
+                        log.warn("Failed to send approval request notifications: {}", ex.getMessage());
                     }
                 }
 
@@ -440,6 +489,21 @@ public class UserCreationService {
                             request.getPanNumber(), request.getGstNumber(),
                             request.getLegalBusinessName(), request.getBusinessType(),
                             request.getBusinessAddress());
+
+                    // --- Notification: New property added ---
+                    try {
+                        String subject = "New Property Added - CoLive Connect";
+                        String message = "Dear " + saved.getUsername() + ", a new property '" + request.getColiveName() + "' has been successfully added to your CoLive Connect account.";
+                        if (saved.getEmail() != null && !saved.getEmail().isBlank()) {
+                            notificationClient.sendEmail(saved.getEmail(), subject, message);
+                        }
+                        if (saved.getPhoneRaw() != null && !saved.getPhoneRaw().isBlank()) {
+                            notificationClient.sendSms(saved.getPhoneRaw(), message);
+                            notificationClient.sendWhatsapp(saved.getPhoneRaw(), message);
+                        }
+                    } catch (Exception ex) {
+                        log.warn("Failed to send property add notifications for {}: {}", saved.getUsername(), ex.getMessage());
+                    }
 
                     return ResponseEntity.ok(toUserResponse(saved));
                 })

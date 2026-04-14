@@ -36,6 +36,20 @@ public class NotificationClient {
         restTemplate.postForLocation(baseUrl + "/notifications/email", req);
     }
 
+    public void sendWhatsapp(String phoneNumber, String message) {
+        Map<String, Object> req = new HashMap<>();
+        req.put("phoneNumber", phoneNumber);
+        req.put("message", message);
+        restTemplate.postForLocation(baseUrl + "/notifications/whatsapp", req);
+    }
+
+    public void sendTelegram(String chatId, String message) {
+        Map<String, Object> req = new HashMap<>();
+        req.put("chatId", chatId);
+        req.put("message", message);
+        restTemplate.postForLocation(baseUrl + "/notifications/telegram", req);
+    }
+
     public void sendSms(String phoneNumber, String message) {
         Map<String, Object> req = new HashMap<>();
         req.put("phoneNumber", phoneNumber);
