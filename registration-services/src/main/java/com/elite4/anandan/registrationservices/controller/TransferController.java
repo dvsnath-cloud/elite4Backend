@@ -1,6 +1,7 @@
 package com.elite4.anandan.registrationservices.controller;
 
 import com.elite4.anandan.registrationservices.document.TransferRequestDocument;
+import com.elite4.anandan.registrationservices.dto.TransferApprovalDTO;
 import com.elite4.anandan.registrationservices.dto.TransferRejectDTO;
 import com.elite4.anandan.registrationservices.dto.TransferRequestDTO;
 import com.elite4.anandan.registrationservices.service.TransferService;
@@ -81,15 +82,29 @@ public class TransferController {
     }
 
     /**
+     * Check if a tenant has a pending transfer request.
+     * Returns the pending transfer if exists, or 204 No Content if none.
+     */
+    @GetMapping("/status/tenant/{registrationId}")
+    @PreAuthorize("hasAnyRole('ADMIN','MODERATOR','USER')")
+    public ResponseEntity<?> getTenantPendingTransfer(@PathVariable String registrationId) {
+        var pending = transferService.getPendingTransferForTenant(registrationId);
+        return pending
+                .map(t -> ResponseEntity.ok((Object) t))
+                .orElse(ResponseEntity.noContent().build());
+    }
+
+    /**
      * Approve a transfer request (two-step flow).
      * Step 1: Source colive owner or admin approves → moves to PENDING_DESTINATION_APPROVAL.
      * Step 2: Destination colive owner or admin approves → checkout + re-register → COMPLETED.
      */
     @PutMapping("/{id}/approve")
     @PreAuthorize("hasAnyRole('ADMIN','MODERATOR')")
-    public ResponseEntity<?> approveTransfer(@PathVariable String id) {
+    public ResponseEntity<?> approveTransfer(@PathVariable String id,
+                                             @RequestBody(required = false) TransferApprovalDTO approvalDTO) {
         try {
-            TransferRequestDocument approved = transferService.approveTransfer(id);
+            TransferRequestDocument approved = transferService.approveTransfer(id, approvalDTO);
             return ResponseEntity.ok(approved);
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));

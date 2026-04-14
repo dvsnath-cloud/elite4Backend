@@ -76,5 +76,10 @@ public class RoomAvailabilityDTO {
      * Count of female tenants in the room
      */
     private Integer femaleTenantsCount;
+
+    /**
+     * Whether any tenant has marked the entire room as occupied
+     */
+    private Boolean entireRoomOccupied;
 }
 

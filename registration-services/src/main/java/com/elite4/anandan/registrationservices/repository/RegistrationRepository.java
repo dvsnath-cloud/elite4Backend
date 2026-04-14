@@ -12,6 +12,7 @@ import java.util.Optional;
 @Repository
 public interface RegistrationRepository extends MongoRepository<RegistrationDocument, String> {
     Optional<RegistrationDocument> findByEmail(String email);
+    Optional<RegistrationDocument> findByEmailAndOccupied(String email, Registration.roomOccupied occupied);
     Optional<RegistrationDocument> findByContactNo(String contactNo);
     List<RegistrationDocument> findAllByContactNo(String contactNo);
     Optional<RegistrationDocument> findByContactNoAndOccupied(String contactNo, Registration.roomOccupied occupied);

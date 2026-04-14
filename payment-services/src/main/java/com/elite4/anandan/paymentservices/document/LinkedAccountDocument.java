@@ -42,8 +42,21 @@ public class LinkedAccountDocument {
     private String businessAddress;
     private String activationStatus;     // NEW, ACTIVATED, SUSPENDED, UNDER_REVIEW
 
+    // Document upload tracking (Phase 2 - KYC documents)
+    private java.util.List<UploadedDocument> uploadedDocuments;
+
     private boolean primary;         // only one per ownerUsername+coliveName
     private String status;           // CREATED, ACTIVE, SUSPENDED
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+
+    @lombok.Data
+    @lombok.NoArgsConstructor
+    @lombok.AllArgsConstructor
+    public static class UploadedDocument {
+        private String documentType;    // aadhar_front, aadhar_back, pan, passport_front, etc.
+        private String razorpayDocId;   // Document ID returned by Razorpay
+        private String originalFileName;
+        private LocalDateTime uploadedAt;
+    }
 }

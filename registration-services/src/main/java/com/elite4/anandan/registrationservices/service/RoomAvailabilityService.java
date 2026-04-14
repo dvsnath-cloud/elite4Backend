@@ -50,12 +50,16 @@ public class RoomAvailabilityService {
                 registrationRepository.findByColiveNameAndColiveUserNameAndRoomForRegistrationRoomNumber(
                     coliveName, coliveUserName, roomNumber);
 
-            // Filter to only active (not checked out) members
+            // Filter to only active (not checked out) members — must be OCCUPIED status AND no past checkout date
             List<RegistrationDocument> activeMembers = allRegistrations.stream()
+                .filter(reg -> reg.getOccupied() == Registration.roomOccupied.OCCUPIED)
                 .filter(reg -> reg.getCheckOutDate() == null || reg.getCheckOutDate().after(new Date()))
                 .collect(Collectors.toList());
 
             int currentOccupants = activeMembers.size();
+
+            log.debug("Room {} in {}: total registrations={}, active members={}", 
+                     roomNumber, coliveName, allRegistrations.size(), currentOccupants);
 
             // Count male and female tenants
             long maleCount = activeMembers.stream()
@@ -68,13 +72,27 @@ public class RoomAvailabilityService {
                         reg.getGender().equals(Registration.Gender.FEMALE))
                 .count();
 
+            // Check if any active member has marked entire room as occupied
+            boolean entireRoomOccupied = activeMembers.stream()
+                .anyMatch(reg -> Boolean.TRUE.equals(reg.getEntireRoomOccupied()));
+
             // Default capacity to 1 if not provided
             if (roomCapacity == null || roomCapacity <= 0) {
+                log.warn("Room {} has no valid capacity (was: {}), defaulting to 1", roomNumber, roomCapacity);
                 roomCapacity = 1;
             }
 
             // Determine availability status
-            String status = determineAvailabilityStatus(currentOccupants, roomCapacity);
+            // If entireRoomOccupied flag is set by any tenant, treat room as OCCUPIED regardless of capacity
+            String status;
+            if (entireRoomOccupied && currentOccupants > 0) {
+                status = "OCCUPIED";
+                log.info("Room {} marked OCCUPIED due to entireRoomOccupied flag", roomNumber);
+            } else {
+                status = determineAvailabilityStatus(currentOccupants, roomCapacity);
+            }
+            log.info("Room {} final status: {} (occupants={}, capacity={}, entireRoom={})", 
+                     roomNumber, status, currentOccupants, roomCapacity, entireRoomOccupied);
             double occupancyPercentage = calculateOccupancyPercentage(currentOccupants, roomCapacity);
 
             RoomAvailabilityDTO dto = RoomAvailabilityDTO.builder()
@@ -86,6 +104,7 @@ public class RoomAvailabilityService {
                 .occupancyPercentage(occupancyPercentage)
                 .maleTenantsCount((int) maleCount)
                 .femaleTenantsCount((int) femaleCount)
+                .entireRoomOccupied(entireRoomOccupied)
                 .build();
 
             log.info("Room {} availability: {} ({} / {} members) - Males: {}, Females: {}",
@@ -125,8 +144,9 @@ public class RoomAvailabilityService {
                 registrationRepository.findByColiveNameAndColiveUserNameAndRoomForRegistrationHouseNumber(
                     coliveName, coliveUserName, houseNumber);
 
-            // Filter to only active members
+            // Filter to only active members — must be OCCUPIED status AND no past checkout date
             List<RegistrationDocument> activeMembers = allRegistrations.stream()
+                .filter(reg -> reg.getOccupied() == Registration.roomOccupied.OCCUPIED)
                 .filter(reg -> reg.getCheckOutDate() == null || reg.getCheckOutDate().after(new Date()))
                 .collect(Collectors.toList());
 
@@ -212,10 +232,23 @@ public class RoomAvailabilityService {
                             for (Room room : rooms) {
                                 RoomAvailabilityDTO dto = null;
 
+                                // Infer capacity from roomType if not explicitly set
+                                int effectiveCapacity = room.getRoomCapacity();
+                                if (effectiveCapacity <= 0 && room.getRoomType() != null) {
+                                    effectiveCapacity = switch (room.getRoomType()) {
+                                        case SINGLE -> 1;
+                                        case DOUBLE -> 2;
+                                        case TRIPLE -> 3;
+                                        case FOUR -> 4;
+                                    };
+                                    log.info("Room {} capacity inferred from type {}: {}", 
+                                             room.getRoomNumber(), room.getRoomType(), effectiveCapacity);
+                                }
+
                                 // Handle room (with roomNumber)
                                 if (room.getRoomNumber() != null && !room.getRoomNumber().isBlank()) {
                                     dto = calculateRoomAvailability(coliveName, coliveUserName,
-                                            room.getRoomNumber(), room.getRoomCapacity());
+                                            room.getRoomNumber(), effectiveCapacity);
                                     if (room.getRoomType() != null) {
                                         dto.setRoomType(room.getRoomType().toString());
                                     }
@@ -223,7 +256,7 @@ public class RoomAvailabilityService {
                                 // Handle house (with houseNumber)
                                 else if (room.getHouseNumber() != null && !room.getHouseNumber().isBlank()) {
                                     dto = calculateHouseAvailability(coliveName, coliveUserName,
-                                            room.getHouseNumber(), room.getRoomCapacity());
+                                            room.getHouseNumber(), effectiveCapacity);
                                     if (room.getHouseType() != null) {
                                         dto.setHouseType(room.getHouseType().toString());
                                     }

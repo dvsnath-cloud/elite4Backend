@@ -63,7 +63,8 @@ public class UserController {
             @RequestParam String request,
             @RequestParam(required = false) org.springframework.web.multipart.MultipartFile userAadhar,
             @RequestParam(required = false) java.util.Map<String, org.springframework.web.multipart.MultipartFile> fileMap,
-            @RequestParam(required = false) Map<String, org.springframework.web.multipart.MultipartFile> licenseDocuments) throws java.io.IOException {
+            @RequestParam(required = false) Map<String, org.springframework.web.multipart.MultipartFile> licenseDocuments,
+            @RequestParam(required = false) Map<String, org.springframework.web.multipart.MultipartFile> kycDocuments) throws java.io.IOException {
 
         try {
             log.info("📝 SIGNUP WITH FILES REQUEST");
@@ -169,7 +170,41 @@ public class UserController {
                     }
                 }
             }
-            return userCreationService.createUserWithFilesAndPhotos(userCreateRequest, userAadharBytes, propertyPhotosMap, licenseDocumentsMap);
+            // Handle KYC documents per property (e.g., kyc_0_pan, kyc_1_aadhar_front)
+            // Builds Map<coliveName, Map<docType, byte[]>> so each property gets its own KYC docs
+            java.util.Map<String, java.util.Map<String, byte[]>> kycDocumentsMap = new java.util.HashMap<>();
+            if (kycDocuments != null && !kycDocuments.isEmpty()) {
+                List<ColiveNameAndRooms> coLivesList = new java.util.ArrayList<>(userCreateRequest.getColiveDetails());
+                for (Map.Entry<String, org.springframework.web.multipart.MultipartFile> entry : kycDocuments.entrySet()) {
+                    org.springframework.web.multipart.MultipartFile file = entry.getValue();
+                    if (file != null && !file.isEmpty()) {
+                        // Key format: kyc_{propertyIndex}_{documentType} (e.g., kyc_0_pan, kyc_1_aadhar_front)
+                        String rawKey = entry.getKey();
+                        if (rawKey.startsWith("kyc_")) {
+                            String remainder = rawKey.substring(4); // e.g., "0_pan" or "1_aadhar_front"
+                            int underscoreIdx = remainder.indexOf('_');
+                            if (underscoreIdx > 0) {
+                                try {
+                                    int propertyIndex = Integer.parseInt(remainder.substring(0, underscoreIdx));
+                                    String docType = remainder.substring(underscoreIdx + 1);
+                                    if (propertyIndex < coLivesList.size()) {
+                                        String coliveName = coLivesList.get(propertyIndex).getColiveName();
+                                        kycDocumentsMap.computeIfAbsent(coliveName, k -> new java.util.HashMap<>())
+                                                .put(docType, file.getBytes());
+                                        log.debug("📝 KYC document: property={}, type={}, size={} bytes", coliveName, docType, file.getSize());
+                                    } else {
+                                        log.warn("📝 KYC property index {} out of range. Total coLives: {}", propertyIndex, coLivesList.size());
+                                    }
+                                } catch (NumberFormatException e) {
+                                    log.warn("📝 Invalid KYC key format: {}", rawKey);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            return userCreationService.createUserWithFilesAndPhotos(userCreateRequest, userAadharBytes, propertyPhotosMap, licenseDocumentsMap, kycDocumentsMap);
         } catch (Exception e) {
             log.error("❌ SIGNUP WITH FILES ERROR - Exception: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
@@ -211,7 +246,8 @@ public class UserController {
     public ResponseEntity<?> addClientWithFiles(
             @RequestParam String request,
             @RequestParam(required = false) java.util.Map<String, org.springframework.web.multipart.MultipartFile> fileMap,
-            @RequestParam(required = false) Map<String, org.springframework.web.multipart.MultipartFile> licenseDocuments) throws java.io.IOException {
+            @RequestParam(required = false) Map<String, org.springframework.web.multipart.MultipartFile> licenseDocuments,
+            @RequestParam(required = false) Map<String, org.springframework.web.multipart.MultipartFile> kycDocuments) throws java.io.IOException {
 
         try {
             log.info("🏢 ADD CLIENT WITH FILES REQUEST");
@@ -272,7 +308,31 @@ public class UserController {
                 }
             }
 
-            return userCreationService.addClientToUserWithFilesAndPhotos(addClientRequest, propertyPhotosMap,licenseDocumentsMap);
+            // Handle KYC documents per property (e.g., kyc_0_pan, kyc_0_aadhar_front)
+            // For addClient, always property index 0 mapped to the single coliveName
+            java.util.Map<String, java.util.Map<String, byte[]>> kycDocumentsMap = new java.util.HashMap<>();
+            if (kycDocuments != null && !kycDocuments.isEmpty()) {
+                String coliveName = addClientRequest.getColiveName();
+                for (Map.Entry<String, org.springframework.web.multipart.MultipartFile> entry : kycDocuments.entrySet()) {
+                    org.springframework.web.multipart.MultipartFile file = entry.getValue();
+                    if (file != null && !file.isEmpty()) {
+                        // Key format: kyc_{propertyIndex}_{documentType} (e.g., kyc_0_pan)
+                        String rawKey = entry.getKey();
+                        if (rawKey.startsWith("kyc_")) {
+                            String remainder = rawKey.substring(4);
+                            int underscoreIdx = remainder.indexOf('_');
+                            if (underscoreIdx > 0) {
+                                String docType = remainder.substring(underscoreIdx + 1);
+                                kycDocumentsMap.computeIfAbsent(coliveName, k -> new java.util.HashMap<>())
+                                        .put(docType, file.getBytes());
+                                log.debug("🏢 KYC document: property={}, type={}, size={} bytes", coliveName, docType, file.getSize());
+                            }
+                        }
+                    }
+                }
+            }
+
+            return userCreationService.addClientToUserWithFilesAndPhotos(addClientRequest, propertyPhotosMap, licenseDocumentsMap, kycDocumentsMap);
         } catch (Exception e) {
             log.error("❌ ADD CLIENT WITH FILES ERROR - Exception: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)

@@ -104,6 +104,10 @@ public class TransferService {
         log.info("Transfer request created: {} for tenant {} from {} to {}",
                 saved.getId(), tenant.getFname(), tenant.getColiveName(), dto.getToColiveName());
 
+        // Update transferStatus on the registration document
+        tenant.setTransferStatus("TRANSFER_PENDING");
+        registrationRepository.save(tenant);
+
         // --- Notification: Transfer request created ---
         try {
             String fromRoom = saved.getFromRoomNumber() != null ? saved.getFromRoomNumber() : saved.getFromHouseNumber();
@@ -198,11 +202,34 @@ public class TransferService {
         return transferRequestRepository.findById(id);
     }
 
+    /**
+     * Get any pending (PENDING_SOURCE_APPROVAL or PENDING_DESTINATION_APPROVAL) transfer for a tenant.
+     */
+    public Optional<TransferRequestDocument> getPendingTransferForTenant(String registrationId) {
+        return transferRequestRepository.findByTenantRegistrationId(registrationId).stream()
+                .filter(t -> t.getStatus() == TransferRequestDocument.TransferStatus.PENDING_SOURCE_APPROVAL
+                        || t.getStatus() == TransferRequestDocument.TransferStatus.PENDING_DESTINATION_APPROVAL)
+                .findFirst();
+    }
+
     // ─── Helper: get current username and check if admin ───
 
     private String getCurrentUsername() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        return auth != null ? auth.getName() : "SYSTEM";
+        if (auth == null) return "SYSTEM";
+        String authName = auth.getName();
+        // auth.getName() may return phone, email, or username — resolve to actual username
+        Optional<User> user = userRepository.findByUsername(authName);
+        if (user.isEmpty()) {
+            user = userRepository.findByPhoneE164(authName);
+        }
+        if (user.isEmpty()) {
+            user = userRepository.findByPhoneRaw(authName);
+        }
+        if (user.isEmpty()) {
+            user = userRepository.findByEmail(authName);
+        }
+        return user.map(User::getUsername).orElse(authName);
     }
 
     private boolean isCurrentUserAdmin() {
@@ -222,7 +249,7 @@ public class TransferService {
      *   - Caller must be the destination colive owner OR an admin.
      *   - This step performs the actual checkout + re-registration.
      */
-    public TransferRequestDocument approveTransfer(String transferId) {
+    public TransferRequestDocument approveTransfer(String transferId, TransferApprovalDTO approvalDTO) {
         TransferRequestDocument transfer = transferRequestRepository.findById(transferId)
                 .orElseThrow(() -> new IllegalArgumentException("Transfer request not found: " + transferId));
 
@@ -232,7 +259,7 @@ public class TransferService {
         if (transfer.getStatus() == TransferStatus.PENDING_SOURCE_APPROVAL) {
             return approveBySource(transfer, currentUser, isAdmin);
         } else if (transfer.getStatus() == TransferStatus.PENDING_DESTINATION_APPROVAL) {
-            return approveByDestination(transfer, currentUser, isAdmin);
+            return approveByDestination(transfer, currentUser, isAdmin, approvalDTO);
         } else {
             throw new IllegalArgumentException(
                     "Transfer request is not in a pending approval status. Current: " + transfer.getStatus());
@@ -245,9 +272,12 @@ public class TransferService {
      */
     private TransferRequestDocument approveBySource(TransferRequestDocument transfer,
                                                      String currentUser, boolean isAdmin) {
+        log.info("approveBySource: currentUser='{}', fromColiveUserName='{}', isAdmin={}",
+                currentUser, transfer.getFromColiveUserName(), isAdmin);
         if (!isAdmin && !transfer.getFromColiveUserName().equals(currentUser)) {
             throw new IllegalArgumentException(
-                    "Only the source property owner or an admin can approve this step");
+                    "Only the source property owner or an admin can approve this step. Current user: "
+                    + currentUser + ", expected: " + transfer.getFromColiveUserName());
         }
 
         transfer.setStatus(TransferStatus.PENDING_DESTINATION_APPROVAL);
@@ -294,56 +324,54 @@ public class TransferService {
 
     /**
      * Step 2: Destination (new colive) moderator approves.
-     * Performs checkout from source + re-registration at destination, then marks COMPLETED.
+     * Updates the existing registration in-place with new colive/room details (no duplicate record).
+     * Frees the old room and occupies the new room via RegistrationService.
      */
     private TransferRequestDocument approveByDestination(TransferRequestDocument transfer,
-                                                          String currentUser, boolean isAdmin) {
+                                                          String currentUser, boolean isAdmin,
+                                                          TransferApprovalDTO approvalDTO) {
+        log.info("approveByDestination: currentUser='{}', toColiveUserName='{}', isAdmin={}",
+                currentUser, transfer.getToColiveUserName(), isAdmin);
         if (!isAdmin && !transfer.getToColiveUserName().equals(currentUser)) {
             throw new IllegalArgumentException(
-                    "Only the destination property owner or an admin can approve this step");
+                    "Only the destination property owner or an admin can approve this step. Current user: "
+                    + currentUser + ", expected: " + transfer.getToColiveUserName());
         }
 
-        // Step 1: Checkout tenant from source property (skip if already vacated)
+        // Fetch the existing tenant registration
         RegistrationDocument tenantDoc = registrationRepository.findById(transfer.getTenantRegistrationId())
                 .orElseThrow(() -> new IllegalArgumentException(
                         "Original tenant registration not found: " + transfer.getTenantRegistrationId()));
 
-        if (tenantDoc.getOccupied() == Registration.roomOccupied.OCCUPIED) {
-            UpdateUserForCheckOut checkoutDto = new UpdateUserForCheckOut(
-                    transfer.getTenantRegistrationId(), new Date());
-            registrationService.checkout(checkoutDto, true);
-            log.info("Transfer approval - checked out tenant {} from {}", tenantDoc.getFname(), transfer.getFromColiveName());
-        } else {
-            log.info("Transfer approval - tenant {} already vacated from {}, skipping checkout",
-                    tenantDoc.getFname(), transfer.getFromColiveName());
-        }
+        // Apply overrides from destination approver if provided
+        double finalRoomRent = (approvalDTO != null && approvalDTO.getRoomRent() != null)
+                ? approvalDTO.getRoomRent() : tenantDoc.getRoomRent();
+        double finalAdvanceAmount = (approvalDTO != null && approvalDTO.getAdvanceAmount() != null)
+                ? approvalDTO.getAdvanceAmount() : tenantDoc.getAdvanceAmount();
+        String finalToRoomNumber = (approvalDTO != null && approvalDTO.getToRoomNumber() != null && !approvalDTO.getToRoomNumber().isBlank())
+                ? approvalDTO.getToRoomNumber() : transfer.getToRoomNumber();
+        String finalToHouseNumber = (approvalDTO != null && approvalDTO.getToHouseNumber() != null && !approvalDTO.getToHouseNumber().isBlank())
+                ? approvalDTO.getToHouseNumber() : transfer.getToHouseNumber();
 
-        // Step 2: Create new registration at destination
-        Registration newReg = new Registration();
-        newReg.setFname(tenantDoc.getFname());
-        newReg.setLname(tenantDoc.getLname());
-        newReg.setEmail(tenantDoc.getEmail());
-        newReg.setMname(tenantDoc.getMname());
-        newReg.setContactNo(tenantDoc.getContactNo());
-        newReg.setGender(tenantDoc.getGender());
-        newReg.setAddress(tenantDoc.getAddress());
-        newReg.setPincode(tenantDoc.getPincode());
-        newReg.setDocumentType(tenantDoc.getDocumentType());
-        newReg.setDocumentNumber(tenantDoc.getDocumentNumber());
-        newReg.setAadharPhotoPath(tenantDoc.getAadharPhotoPath());
-        newReg.setDocumentUploadPath(tenantDoc.getDocumentUploadPath());
-        newReg.setColiveUserName(transfer.getToColiveUserName());
-        newReg.setColiveName(transfer.getToColiveName());
-        newReg.setCheckInDate(new Date());
-        newReg.setAdvanceAmount(tenantDoc.getAdvanceAmount());
-        newReg.setRoomRent(tenantDoc.getRoomRent());
-        newReg.setParentName(tenantDoc.getParentName());
-        newReg.setParentContactNo(tenantDoc.getParentContactNo());
+        // Step 1: Free the old room occupancy
+        registrationService.freeRoomOccupancy(tenantDoc);
 
+        // Step 2: Update the existing registration in-place with new destination details
+        tenantDoc.setColiveUserName(transfer.getToColiveUserName());
+        tenantDoc.setColiveName(transfer.getToColiveName());
+        tenantDoc.setCheckInDate(new Date());
+        tenantDoc.setCheckOutDate(null);
+        tenantDoc.setRoomRent(finalRoomRent);
+        tenantDoc.setAdvanceAmount(finalAdvanceAmount);
+        tenantDoc.setOccupied(Registration.roomOccupied.OCCUPIED);
+        tenantDoc.setActive(Boolean.TRUE);
+        tenantDoc.setTransferStatus(null);
+
+        // Update room info
         RoomForRegistration newRoom = new RoomForRegistration();
-        newRoom.setRoomNumber(transfer.getToRoomNumber());
-        newRoom.setHouseNumber(transfer.getToHouseNumber());
-        if (transfer.getToRoomNumber() != null && !transfer.getToRoomNumber().isBlank()) {
+        newRoom.setRoomNumber(finalToRoomNumber);
+        newRoom.setHouseNumber(finalToHouseNumber);
+        if (finalToRoomNumber != null && !finalToRoomNumber.isBlank()) {
             if (tenantDoc.getRoomForRegistration() != null) {
                 newRoom.setRoomType(tenantDoc.getRoomForRegistration().getRoomType());
                 newRoom.setRoomCapacity(tenantDoc.getRoomForRegistration().getRoomCapacity());
@@ -353,24 +381,29 @@ public class TransferService {
                 newRoom.setHouseType(tenantDoc.getRoomForRegistration().getHouseType());
             }
         }
+        tenantDoc.setRoomForRegistration(newRoom);
 
-        RegistrationWithRoomRequest newRegistration = registrationService.create(newReg, newRoom, true);
-        log.info("Transfer approval - created new registration {} at {}",
-                newRegistration.getId(), transfer.getToColiveName());
+        // Step 3: Occupy the new room
+        registrationService.occupyRoom(tenantDoc);
 
-        // Step 3: Mark transfer as COMPLETED
+        // Save the updated registration
+        RegistrationDocument savedDoc = registrationRepository.save(tenantDoc);
+        log.info("Transfer approval - updated registration {} from {} to {}",
+                savedDoc.getId(), transfer.getFromColiveName(), transfer.getToColiveName());
+
+        // Step 4: Mark transfer as COMPLETED
         transfer.setStatus(TransferStatus.COMPLETED);
         transfer.setDestinationApprovedBy(currentUser);
         transfer.setDestinationApprovalDate(new Date());
-        transfer.setNewRegistrationId(newRegistration.getId());
+        transfer.setNewRegistrationId(savedDoc.getId());
         transfer.setCompletedDate(new Date());
 
         TransferRequestDocument saved = transferRequestRepository.save(transfer);
-        log.info("Transfer {} completed successfully. New registration: {}", transfer.getId(), newRegistration.getId());
+        log.info("Transfer {} completed successfully. Registration {} updated in-place.", transfer.getId(), savedDoc.getId());
 
         // --- Notification: Transfer completed ---
         try {
-            String toRoom = saved.getToRoomNumber() != null ? saved.getToRoomNumber() : saved.getToHouseNumber();
+            String toRoom = finalToRoomNumber != null ? finalToRoomNumber : finalToHouseNumber;
             String fromRoom = saved.getFromRoomNumber() != null ? saved.getFromRoomNumber() : saved.getFromHouseNumber();
 
             // Notify tenant
@@ -444,6 +477,12 @@ public class TransferService {
 
         TransferRequestDocument saved = transferRequestRepository.save(transfer);
         log.info("Transfer {} rejected by {}. Reason: {}", transferId, rejectedBy, rejectionReason);
+
+        // Clear transferStatus on the tenant's registration
+        registrationRepository.findById(transfer.getTenantRegistrationId()).ifPresent(tenant -> {
+            tenant.setTransferStatus(null);
+            registrationRepository.save(tenant);
+        });
 
         // --- Notification: Transfer rejected ---
         try {

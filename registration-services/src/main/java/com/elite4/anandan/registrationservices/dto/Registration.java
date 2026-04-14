@@ -67,6 +67,10 @@ public class Registration {
 
     private String telegramChatId;
 
+    private String transferStatus;
+
+    private Boolean entireRoomOccupied;
+
     public enum roomOccupied {
         OCCUPIED, NOT_OCCUPIED,VACATED
     }

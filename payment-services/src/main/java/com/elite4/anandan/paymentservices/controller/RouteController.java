@@ -11,8 +11,10 @@ import com.elite4.anandan.paymentservices.service.SettlementReportService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 import java.util.Map;
@@ -64,6 +66,17 @@ public class RouteController {
             @RequestParam String coliveName) {
         log.info("GET /payments/route/linked-accounts → owner={}, colive={}", ownerUsername, coliveName);
         List<LinkedAccountDocument> accounts = linkedAccountService.getAccountsByOwnerAndColive(ownerUsername, coliveName);
+        return ResponseEntity.ok(accounts);
+    }
+
+    @GetMapping("/linked-accounts/by-owner")
+    public ResponseEntity<List<LinkedAccountDocument>> getLinkedAccountsByOwner(
+            @RequestParam String ownerUsername,
+            @RequestParam(required = false) String coliveName) {
+        log.info("GET /payments/route/linked-accounts/by-owner → owner={}, colive={}", ownerUsername, coliveName);
+        List<LinkedAccountDocument> accounts = (coliveName != null && !coliveName.isBlank())
+                ? linkedAccountService.getAccountsByOwnerAndColive(ownerUsername, coliveName)
+                : linkedAccountService.getAccountsByOwner(ownerUsername);
         return ResponseEntity.ok(accounts);
     }
 
@@ -128,6 +141,55 @@ public class RouteController {
             return ResponseEntity.status(HttpStatus.NOT_FOUND)
                     .body(Map.of("message", e.getMessage()));
         }
+    }
+
+    @PostMapping(value = "/linked-accounts/{accountId}/upload-document", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<?> uploadDocument(
+            @PathVariable String accountId,
+            @RequestParam("documentType") String documentType,
+            @RequestParam("file") MultipartFile file) {
+        log.info("POST /payments/route/linked-accounts/{}/upload-document → type={}, file={}",
+                accountId, documentType, file.getOriginalFilename());
+
+        if (documentType == null || documentType.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("message", "documentType is required"));
+        }
+        if (file.isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("message", "file is required"));
+        }
+
+        // Validate document type
+        List<String> supported = linkedAccountService.getSupportedDocumentTypes();
+        if (!supported.contains(documentType)) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "message", "Unsupported document type: " + documentType,
+                    "supportedTypes", supported));
+        }
+
+        // Validate file size (max 5MB)
+        if (file.getSize() > 5 * 1024 * 1024) {
+            return ResponseEntity.badRequest().body(Map.of("message", "File size exceeds 5MB limit"));
+        }
+
+        // Validate file type
+        String contentType = file.getContentType();
+        if (contentType == null || !(contentType.startsWith("image/") || "application/pdf".equals(contentType))) {
+            return ResponseEntity.badRequest().body(Map.of("message", "Only image files (JPEG, PNG) and PDF are accepted"));
+        }
+
+        try {
+            LinkedAccountResponse response = linkedAccountService.uploadDocument(accountId, documentType, file);
+            return ResponseEntity.ok(response);
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("message", e.getMessage()));
+        }
+    }
+
+    @GetMapping("/linked-accounts/document-types")
+    public ResponseEntity<List<String>> getSupportedDocumentTypes() {
+        log.info("GET /payments/route/linked-accounts/document-types");
+        return ResponseEntity.ok(linkedAccountService.getSupportedDocumentTypes());
     }
 
     // ── Transfers (Phase 1) ────────────────────────────────────────

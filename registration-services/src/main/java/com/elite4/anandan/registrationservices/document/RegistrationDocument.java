@@ -7,6 +7,8 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.springframework.data.annotation.Id;
+import org.springframework.data.mongodb.core.index.CompoundIndex;
+import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.mongodb.core.mapping.Document;
 
 import java.util.Date;
@@ -16,6 +18,8 @@ import java.util.Date;
 @NoArgsConstructor
 @AllArgsConstructor
 @Document(collection = "registrations")
+@CompoundIndex(name = "unique_email_occupied", def = "{'email': 1, 'occupied': 1}", unique = true, partialFilter = "{'occupied': 'OCCUPIED'}")
+@CompoundIndex(name = "unique_contact_occupied", def = "{'contactNo': 1, 'occupied': 1}", unique = true, partialFilter = "{'occupied': 'OCCUPIED'}")
 public class RegistrationDocument {
 
     @Id
@@ -43,5 +47,6 @@ public class RegistrationDocument {
     private double advanceAmount;
     private double roomRent;
     private Boolean active;
+    private String transferStatus;
+    private Boolean entireRoomOccupied;
 }
-

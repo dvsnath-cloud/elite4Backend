@@ -9,6 +9,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.GrantedAuthority;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
@@ -235,9 +237,31 @@ public class RegistrationController {
             @RequestParam(required = false) String room,
             @RequestParam Boolean changingRoom,
             @RequestParam(required = false) MultipartFile newAadharPhoto,
-            @RequestParam(required = false) MultipartFile newDocument) throws IOException {
+            @RequestParam(required = false) MultipartFile newDocument,
+            Authentication authentication) throws IOException {
 
         Registration registrationDto = objectMapper.readValue(registration, Registration.class);
+
+        // Server-side guard: tenants (ROLE_USER) cannot modify room/occupancy fields
+        boolean isTenant = authentication.getAuthorities().stream()
+                .map(GrantedAuthority::getAuthority)
+                .anyMatch(role -> "ROLE_USER".equals(role))
+                && authentication.getAuthorities().stream()
+                .map(GrantedAuthority::getAuthority)
+                .noneMatch(role -> "ROLE_ADMIN".equals(role) || "ROLE_MODERATOR".equals(role));
+
+        if (isTenant) {
+            log.info("Tenant user editing registration {} — preserving room/occupancy fields from database", id);
+            var existing = registrationService.findById(id);
+            if (existing.isPresent()) {
+                var existingReg = existing.get().getRegistration();
+                registrationDto.setCheckInDate(existingReg.getCheckInDate());
+                registrationDto.setCheckOutDate(existingReg.getCheckOutDate());
+                registrationDto.setRoomRent(existingReg.getRoomRent());
+                registrationDto.setAdvanceAmount(existingReg.getAdvanceAmount());
+            }
+            changingRoom = false; // tenants cannot change rooms
+        }
 
         // Room can come embedded in registration JSON or as a separate param
         RoomForRegistration roomDto;

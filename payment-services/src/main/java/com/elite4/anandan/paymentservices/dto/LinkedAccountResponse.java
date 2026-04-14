@@ -25,4 +25,7 @@ public class LinkedAccountResponse {
     private String activationStatus;
     private String panNumber;
     private String gstNumber;
+
+    // Document upload status
+    private java.util.List<String> uploadedDocumentTypes;
 }

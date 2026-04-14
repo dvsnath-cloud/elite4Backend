@@ -216,7 +216,35 @@ public class RegistrationService {
                                         room.getRoomNumber(), dto.getColiveUserName());
                                 roomFound = true;
                                 id = "R" + "-" + UUID.randomUUID().toString().replace("-", "").substring(0, 14);
-                                availableRoom.setOccupied(Room.roomOccupied.OCCUPIED);
+
+                                // Calculate correct occupied status based on capacity
+                                int currentActive = (int) registrationRepository
+                                        .findByColiveNameAndColiveUserNameAndRoomForRegistrationRoomNumber(
+                                                dto.getColiveName(), dto.getColiveUserName(), room.getRoomNumber())
+                                        .stream()
+                                        .filter(reg -> reg.getOccupied() == Registration.roomOccupied.OCCUPIED)
+                                        .count();
+                                int newOccupantCount = currentActive + 1; // +1 for the member being added now
+                                int capacity = availableRoom.getRoomCapacity();
+                                // Infer capacity from roomType if not set
+                                if (capacity <= 0 && availableRoom.getRoomType() != null) {
+                                    capacity = switch (availableRoom.getRoomType()) {
+                                        case SINGLE -> 1;
+                                        case DOUBLE -> 2;
+                                        case TRIPLE -> 3;
+                                        case FOUR -> 4;
+                                    };
+                                }
+                                if (capacity <= 0) capacity = 1;
+
+                                if (Boolean.TRUE.equals(dto.getEntireRoomOccupied()) || newOccupantCount >= capacity) {
+                                    availableRoom.setOccupied(Room.roomOccupied.OCCUPIED);
+                                } else {
+                                    availableRoom.setOccupied(Room.roomOccupied.PARTIALLY_OCCUPIED);
+                                }
+                                log.info("Room {} status set to {} (occupants: {}/{}, entireRoomOccupied: {})",
+                                        room.getRoomNumber(), availableRoom.getOccupied(), newOccupantCount, capacity, dto.getEntireRoomOccupied());
+
                                 rooms.add(availableRoom);
                                 break;
                             }
@@ -586,6 +614,11 @@ public class RegistrationService {
     }
 
     public Optional<RegistrationWithRoomRequest> findByEmail(String email) {
+        // Prefer the active (OCCUPIED) registration — important after transfers
+        Optional<RegistrationDocument> occupied = registrationRepository.findByEmailAndOccupied(email, Registration.roomOccupied.OCCUPIED);
+        if (occupied.isPresent()) {
+            return occupied.map(this::toDto);
+        }
         return registrationRepository.findByEmail(email).map(this::toDto);
     }
 
@@ -787,13 +820,23 @@ public class RegistrationService {
 
             // Count remaining occupied registrations for this room
             int occupiedCount = countOccupiedRegistrations(coliveUserName, clientDetail.getClientCategory(), room);
+            int capacity = room.getRoomCapacity() > 0 ? room.getRoomCapacity() : 1;
 
-            // Update room occupancy status
-            if (occupiedCount > 0) {
-                room.setOccupied(Room.roomOccupied.PARTIALLY_OCCUPIED);
-            } else {
+            // Check if any remaining member has entireRoomOccupied flag
+            boolean hasEntireRoomFlag = hasEntireRoomOccupiedFlag(registrationDoc.getColiveName(), coliveUserName,
+                    clientDetail.getClientCategory(), room);
+
+            // Update room occupancy status based on actual count vs capacity
+            if (occupiedCount == 0) {
                 room.setOccupied(Room.roomOccupied.NOT_OCCUPIED);
+            } else if (hasEntireRoomFlag || occupiedCount >= capacity) {
+                room.setOccupied(Room.roomOccupied.OCCUPIED);
+            } else {
+                room.setOccupied(Room.roomOccupied.PARTIALLY_OCCUPIED);
             }
+            log.info("Room {} status updated to {} after checkout (remaining: {}/{}, entireRoomFlag: {})",
+                    room.getRoomNumber() != null ? room.getRoomNumber() : room.getHouseNumber(),
+                    room.getOccupied(), occupiedCount, capacity, hasEntireRoomFlag);
 
             roomUpdated = true;
             break;
@@ -841,6 +884,75 @@ public class RegistrationService {
         }
 
         return registrations.size();
+    }
+
+    /**
+     * Checks if any occupied registration in the room has entireRoomOccupied flag set.
+     */
+    private boolean hasEntireRoomOccupiedFlag(String coliveName, String coliveUserName, String clientCategory, Room room) {
+        List<RegistrationDocument> registrations;
+
+        if (clientCategory != null && (clientCategory.equals("PG") || clientCategory.equals("HOSTEL"))) {
+            registrations = registrationRepository.findByColiveNameAndColiveUserNameAndRoomForRegistrationRoomNumberAndOccupied(
+                    coliveName, coliveUserName, room.getRoomNumber(), Registration.roomOccupied.OCCUPIED);
+        } else {
+            registrations = registrationRepository.findByColiveUserNameAndColiveNameAndRoomForRegistrationHouseNumberAndOccupied(
+                    coliveUserName, coliveName, room.getHouseNumber(), Registration.roomOccupied.OCCUPIED);
+        }
+
+        return registrations.stream().anyMatch(reg -> Boolean.TRUE.equals(reg.getEntireRoomOccupied()));
+    }
+
+    /**
+     * Free the room occupancy for a registration (used during transfers).
+     * Updates the room status in the RoomOnBoardDocument to reflect the tenant leaving.
+     */
+    public void freeRoomOccupancy(RegistrationDocument registrationDoc) {
+        updateRoomOccupancyAfterCheckout(registrationDoc);
+        log.info("Freed room occupancy for registration {} at {}", registrationDoc.getId(), registrationDoc.getColiveName());
+    }
+
+    /**
+     * Occupy a room for a registration (used during transfers).
+     * Finds the matching room in the destination property's RoomOnBoardDocument and marks it OCCUPIED.
+     */
+    public void occupyRoom(RegistrationDocument registrationDoc) {
+        List<User> clientUsers = userRepository.findAllByclientDetailsColiveName(registrationDoc.getColiveName());
+        if (clientUsers.isEmpty()) {
+            log.warn("No client users found for coliveName '{}' — skipping room occupy", registrationDoc.getColiveName());
+            return;
+        }
+
+        User user = clientUsers.get(0);
+        Set<ClientAndRoomOnBoardId> clientDetails = user.getClientDetails();
+        if (clientDetails == null || clientDetails.isEmpty()) return;
+
+        RoomForRegistration regRoom = registrationDoc.getRoomForRegistration();
+        if (regRoom == null) return;
+
+        for (ClientAndRoomOnBoardId clientDetail : clientDetails) {
+            if (!clientDetail.getColiveName().equals(registrationDoc.getColiveName())) continue;
+            if (clientDetail.getRoomOnBoardId() == null) continue;
+
+            Optional<RoomOnBoardDocument> roomOnBoardOpt = roomsOrHouseRepository.findById(clientDetail.getRoomOnBoardId());
+            if (roomOnBoardOpt.isEmpty()) continue;
+
+            RoomOnBoardDocument roomOnBoard = roomOnBoardOpt.get();
+            Set<Room> rooms = roomOnBoard.getRooms();
+            if (rooms == null || rooms.isEmpty()) continue;
+
+            for (Room room : rooms) {
+                if (isRoomMatch(room, regRoom)) {
+                    room.setOccupied(Room.roomOccupied.OCCUPIED);
+                    roomOnBoard.setRooms(rooms);
+                    roomsOrHouseRepository.save(roomOnBoard);
+                    log.info("Occupied room {} at {}", regRoom.getRoomNumber() != null ? regRoom.getRoomNumber() : regRoom.getHouseNumber(),
+                            registrationDoc.getColiveName());
+                    return;
+                }
+            }
+        }
+        log.warn("Could not find matching room to occupy at {} for registration {}", registrationDoc.getColiveName(), registrationDoc.getId());
     }
 
     /**
@@ -945,6 +1057,8 @@ public class RegistrationService {
                 .roomForRegistration(room)
                 .parentContactNo(dto.getParentContactNo())
                 .parentName(dto.getParentName())
+                .transferStatus(dto.getTransferStatus())
+                .entireRoomOccupied(dto.getEntireRoomOccupied())
                 .build();
     }
 
@@ -971,6 +1085,8 @@ public class RegistrationService {
         dto.setRoomRent(doc.getRoomRent());
         dto.setParentContactNo(doc.getParentContactNo());
         dto.setParentName(doc.getParentName());
+        dto.setTransferStatus(doc.getTransferStatus());
+        dto.setEntireRoomOccupied(doc.getEntireRoomOccupied());
         dto.setRegId(doc.getId());
         return dto;
     }

@@ -56,7 +56,7 @@ public class UserCreationService {
      * @return 201 with created user data, or 400 if username/email/roles are invalid
      */
     @SuppressWarnings("rawtypes")
-    public ResponseEntity createUser(UserCreateRequest request,java.util.Map<String, java.util.List<byte[]>> propertyPhotosMap,java.util.Map<String, java.util.List<byte[]>> licenseDocumentsMap) {
+    public ResponseEntity createUser(UserCreateRequest request,java.util.Map<String, java.util.List<byte[]>> propertyPhotosMap,java.util.Map<String, java.util.List<byte[]>> licenseDocumentsMap, java.util.Map<String, java.util.Map<String, byte[]>> kycDocumentsMap) {
         Set<ClientAndRoomOnBoardId> clientAndRoomOnBoardIdsSet = new HashSet<>();
 
         try {
@@ -229,13 +229,18 @@ public class UserCreationService {
                 // Sync bank accounts to Route API (Razorpay linked accounts)
                 if (request.getColiveDetails() != null) {
                     for (ColiveNameAndRooms colive : request.getColiveDetails()) {
+                        // Get KYC documents specific to this property (coliveName)
+                        java.util.Map<String, byte[]> propertyKycDocs = kycDocumentsMap != null
+                                ? kycDocumentsMap.getOrDefault(colive.getColiveName(), java.util.Collections.emptyMap())
+                                : java.util.Collections.emptyMap();
                         paymentRouteClient.syncBankAccounts(
                                 saved.getUsername(), colive.getColiveName(),
                                 saved.getEmail(), saved.getPhoneRaw(),
                                 colive.getBankDetailsList(),
                                 colive.getPanNumber(), colive.getGstNumber(),
                                 colive.getLegalBusinessName(), colive.getBusinessType(),
-                                colive.getBusinessAddress());
+                                colive.getBusinessAddress(),
+                                propertyKycDocs);
                     }
                 }
 
@@ -306,7 +311,7 @@ public class UserCreationService {
     }
 
     @SuppressWarnings("rawtypes")
-    public ResponseEntity addClientToExistUser(AddClientToUser request,List<byte[]> propertyPhotos, List<byte[]> licenseDocuments) {
+    public ResponseEntity addClientToExistUser(AddClientToUser request,List<byte[]> propertyPhotos, List<byte[]> licenseDocuments, java.util.Map<String, java.util.Map<String, byte[]>> kycDocumentsMap) {
         Set<ClientAndRoomOnBoardId> clientAndRoomOnBoardIdsSet = new HashSet<>();
         Optional<User> existingUserByUsername = userRepository.findByUsername(request.getUsername());
         if (existingUserByUsername.isPresent()) {
@@ -482,13 +487,18 @@ public class UserCreationService {
                     User saved = userRepository.save(u);
 
                     // Sync bank accounts to Route API (Razorpay linked accounts)
+                    // Get KYC documents specific to this property (coliveName)
+                    java.util.Map<String, byte[]> propertyKycDocs = kycDocumentsMap != null
+                            ? kycDocumentsMap.getOrDefault(request.getColiveName(), java.util.Collections.emptyMap())
+                            : java.util.Collections.emptyMap();
                     paymentRouteClient.syncBankAccounts(
                             saved.getUsername(), request.getColiveName(),
                             saved.getEmail(), saved.getPhoneRaw(),
                             request.getBankDetailsList(),
                             request.getPanNumber(), request.getGstNumber(),
                             request.getLegalBusinessName(), request.getBusinessType(),
-                            request.getBusinessAddress());
+                            request.getBusinessAddress(),
+                            propertyKycDocs);
 
                     // --- Notification: New property added ---
                     try {
@@ -608,7 +618,7 @@ public class UserCreationService {
 
         // Step 1: Create user first (existing logic)
         // Call createUser with empty maps since files are handled separately
-        ResponseEntity<?> createResponse = createUser(request, new java.util.HashMap<>(), new java.util.HashMap<>());
+        ResponseEntity<?> createResponse = createUser(request, new java.util.HashMap<>(), new java.util.HashMap<>(), new java.util.HashMap<>());
 
         // If creation failed, return the error
         if (!createResponse.getStatusCode().is2xxSuccessful()) {
@@ -1044,13 +1054,15 @@ public class UserCreationService {
     public ResponseEntity createUserWithFilesAndPhotos(UserCreateRequest request,
                                                         byte[] userAadharBytes,
                                                         java.util.Map<String, java.util.List<byte[]>> propertyPhotosMap,
-                                                        java.util.Map<String, java.util.List<byte[]>> licenseDocumentsMap) {
+                                                        java.util.Map<String, java.util.List<byte[]>> licenseDocumentsMap,
+                                                        java.util.Map<String, java.util.Map<String, byte[]>> kycDocumentsMap) {
         try {
-            log.info("📸 SIGNUP WITH FILES AND PHOTOS - Username: {}, Has aadhar: {}, CoLives with photos: {}",
-                    request.getUsername(), userAadharBytes != null, propertyPhotosMap.size());
+            log.info("📸 SIGNUP WITH FILES AND PHOTOS - Username: {}, Has aadhar: {}, CoLives with photos: {}, KYC docs: {}",
+                    request.getUsername(), userAadharBytes != null, propertyPhotosMap.size(),
+                    kycDocumentsMap != null ? kycDocumentsMap.size() : 0);
 
-            // Step 1: Create user normally
-            ResponseEntity<?> userResponse = createUser(request, propertyPhotosMap, licenseDocumentsMap);
+            // Step 1: Create user normally (with KYC documents for Razorpay onboarding)
+            ResponseEntity<?> userResponse = createUser(request, propertyPhotosMap, licenseDocumentsMap, kycDocumentsMap);
 
             if (!userResponse.getStatusCode().is2xxSuccessful()) {
                 log.warn("❌ SIGNUP WITH FILES - User creation failed");
@@ -1128,13 +1140,16 @@ public class UserCreationService {
      */
     @SuppressWarnings("rawtypes")
     public ResponseEntity addClientToUserWithFilesAndPhotos(AddClientToUser request,
-                                                            List<byte[]> propertyPhotos, List<byte[]> licenseDocuments) {
+                                                            List<byte[]> propertyPhotos, List<byte[]> licenseDocuments,
+                                                            java.util.Map<String, java.util.Map<String, byte[]>> kycDocumentsMap) {
         try {
-            log.info("🏢 ADD CLIENT WITH PROPERTY PHOTOS - Username: {}, CoLiveName: {}, Photos: {}",
-                    request.getUsername(), request.getColiveName(), propertyPhotos != null ? propertyPhotos.size() : 0);
+            log.info("🏢 ADD CLIENT WITH PROPERTY PHOTOS - Username: {}, CoLiveName: {}, Photos: {}, KYC docs: {}",
+                    request.getUsername(), request.getColiveName(),
+                    propertyPhotos != null ? propertyPhotos.size() : 0,
+                    kycDocumentsMap != null ? kycDocumentsMap.size() : 0);
 
-            // Step 1: Add client normally
-            ResponseEntity<?> addClientResponse = addClientToExistUser(request ,propertyPhotos, licenseDocuments);
+            // Step 1: Add client normally (with KYC documents for Razorpay onboarding)
+            ResponseEntity<?> addClientResponse = addClientToExistUser(request, propertyPhotos, licenseDocuments, kycDocumentsMap);
 
             if (!addClientResponse.getStatusCode().is2xxSuccessful()) {
                 log.warn("❌ ADD CLIENT WITH PHOTOS - Client addition failed");
