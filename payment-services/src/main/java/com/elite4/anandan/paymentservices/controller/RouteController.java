@@ -24,7 +24,7 @@ import java.util.Optional;
 @RestController
 @RequestMapping("/payments/route")
 @RequiredArgsConstructor
-@CrossOrigin(origins = {"http://localhost:3000", "http://localhost:3001"})
+@CrossOrigin(origins = "*", allowedHeaders = "*")
 public class RouteController {
 
     private final LinkedAccountService linkedAccountService;
