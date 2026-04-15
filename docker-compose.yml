@@ -1,0 +1,140 @@
+version: '3.8'
+
+services:
+  # ─────────────────────────────────────────────
+  # MongoDB
+  # ─────────────────────────────────────────────
+  mongo:
+    image: mongo:7
+    container_name: elite4-mongo
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-StrongPassword!123}
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - elite4-network
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─────────────────────────────────────────────
+  # Notification Services (port 8084)
+  # ─────────────────────────────────────────────
+  notification-services:
+    build:
+      context: ./elite4-main
+      dockerfile: notification-services/Dockerfile
+    container_name: elite4-notification
+    restart: unless-stopped
+    ports:
+      - "8084:8084"
+    environment:
+      SERVER_PORT: 8084
+      WHATSAPP_API_TOKEN: ${WHATSAPP_API_TOKEN:-}
+      WHATSAPP_PHONE_NUMBER_ID: ${WHATSAPP_PHONE_NUMBER_ID:-}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      MAIL_HOST: ${MAIL_HOST:-smtp.gmail.com}
+      MAIL_PORT: ${MAIL_PORT:-587}
+      MAIL_USERNAME: ${MAIL_USERNAME:-}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
+      TWILIO_FROM_NUMBER: ${TWILIO_FROM_NUMBER:-}
+    networks:
+      - elite4-network
+
+  # ─────────────────────────────────────────────
+  # Registration Services (port 8082)
+  # ─────────────────────────────────────────────
+  registration-services:
+    build:
+      context: ./elite4-main
+      dockerfile: registration-services/Dockerfile
+    container_name: elite4-registration
+    restart: unless-stopped
+    ports:
+      - "8082:8082"
+    environment:
+      SERVER_PORT: 8082
+      MONGODB_URI: mongodb://root:${MONGO_ROOT_PASSWORD:-StrongPassword!123}@mongo:27017/admin?authSource=admin
+      MONGODB_DATABASE: admin
+      NOTIFICATION_SERVICE_URL: http://notification-services:8084
+      PAYMENT_SERVICE_URL: http://payment-services:8083
+      FILE_STORAGE_TYPE: LOCAL
+      FILE_STORAGE_LOCAL_PATH: /app/colive-files/
+      TENANT_DEFAULT_PASSWORD: ${TENANT_DEFAULT_PASSWORD:-Tenant@123}
+    volumes:
+      - colive_files:/app/colive-files
+    depends_on:
+      mongo:
+        condition: service_healthy
+      notification-services:
+        condition: service_started
+    networks:
+      - elite4-network
+
+  # ─────────────────────────────────────────────
+  # Payment Services (port 8083)
+  # ─────────────────────────────────────────────
+  payment-services:
+    build:
+      context: ./elite4-main
+      dockerfile: payment-services/Dockerfile
+    container_name: elite4-payment
+    restart: unless-stopped
+    ports:
+      - "8083:8083"
+    environment:
+      SERVER_PORT: 8083
+      MONGODB_URI: mongodb://root:${MONGO_ROOT_PASSWORD:-StrongPassword!123}@mongo:27017/admin?authSource=admin
+      MONGODB_DATABASE: payments
+      NOTIFICATION_SERVICE_URL: http://notification-services:8084
+      RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:-rzp_test_SYwvJpnDcJEIvZ}
+      RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET:-acXTG6sTD8L4eAgoKbxwHmzF}
+      RAZORPAY_COMPANY_NAME: ${RAZORPAY_COMPANY_NAME:-CoLive Connect}
+      RAZORPAY_WEBHOOK_SECRET: ${RAZORPAY_WEBHOOK_SECRET:-}
+      RAZORPAY_PLATFORM_FEE: ${RAZORPAY_PLATFORM_FEE:-4900}
+      RAZORPAY_ROUTE_ENABLED: ${RAZORPAY_ROUTE_ENABLED:-true}
+    depends_on:
+      mongo:
+        condition: service_healthy
+      notification-services:
+        condition: service_started
+    networks:
+      - elite4-network
+
+  # ─────────────────────────────────────────────
+  # Frontend (React + Nginx)
+  # ─────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./elite4UI-master/client
+      dockerfile: Dockerfile
+      args:
+        # Empty = use relative URLs (nginx proxy handles routing)
+        REACT_APP_REGISTRATION_API_URL: ""
+        REACT_APP_PAYMENT_API_URL: ""
+        REACT_APP_NOTIFICATION_API_URL: ""
+    container_name: elite4-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - registration-services
+      - payment-services
+    networks:
+      - elite4-network
+
+volumes:
+  mongo_data:
+  colive_files:
+
+networks:
+  elite4-network:
+    driver: bridge
