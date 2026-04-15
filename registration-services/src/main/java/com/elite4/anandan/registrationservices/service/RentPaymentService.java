@@ -890,6 +890,33 @@ public class RentPaymentService {
 
         boolean currentMonthPaid = currentMonthPayment != null;
 
+        // 3b. Current month PENDING record (scheduler-generated rent due)
+        RentPaymentTransaction currentMonthPendingRecord = allPayments.stream()
+                .filter(p -> p.getRentMonth() != null && p.getRentMonth().equals(currentMonthStart))
+                .filter(p -> p.getStatus() == RentPaymentTransaction.PaymentStatus.PENDING
+                        || p.getStatus() == RentPaymentTransaction.PaymentStatus.PARTIAL
+                        || p.getStatus() == RentPaymentTransaction.PaymentStatus.OVERDUE)
+                .max(Comparator.comparing(RentPaymentTransaction::getUpdatedAt))
+                .orElse(null);
+
+        boolean rentDueGenerated = currentMonthPendingRecord != null;
+        double currentMonthRentDue = rentDueGenerated ? currentMonthPendingRecord.getRentAmount() : 0;
+        double currentMonthPendingBalance = 0;
+        if (rentDueGenerated && currentMonthPendingRecord.getRemarks() != null
+                && currentMonthPendingRecord.getRemarks().contains("Pending balance")) {
+            // Extract pending balance from previous months (already calculated by scheduler)
+            currentMonthPendingBalance = allPayments.stream()
+                    .filter(p -> p.getRentMonth() != null && p.getRentMonth().isBefore(currentMonthStart))
+                    .filter(p -> p.getStatus() == RentPaymentTransaction.PaymentStatus.PENDING
+                            || p.getStatus() == RentPaymentTransaction.PaymentStatus.PARTIAL
+                            || p.getStatus() == RentPaymentTransaction.PaymentStatus.OVERDUE)
+                    .mapToDouble(RentPaymentTransaction::getRemainingAmount)
+                    .sum();
+        }
+        double currentMonthTotalDue = currentMonthRentDue + currentMonthPendingBalance;
+        LocalDate currentMonthDueDate = rentDueGenerated ? currentMonthPendingRecord.getDueDate() : null;
+        String currentMonthDueRemarks = rentDueGenerated ? currentMonthPendingRecord.getRemarks() : null;
+
         // 4. Payment history — last 6 months, sorted newest first
         LocalDate sixMonthsAgo = LocalDate.now().minusMonths(6);
         List<TenantPaymentHistoryItem> paymentHistory = allPayments.stream()
@@ -978,6 +1005,12 @@ public class RentPaymentService {
                 .checkInDate(checkInDate)
                 .currentMonthPaid(currentMonthPaid)
                 .currentMonthPayment(currentMonthPayment)
+                .rentDueGenerated(rentDueGenerated)
+                .currentMonthRentDue(currentMonthRentDue)
+                .currentMonthPendingBalance(currentMonthPendingBalance)
+                .currentMonthTotalDue(currentMonthTotalDue)
+                .currentMonthDueDate(currentMonthDueDate)
+                .currentMonthDueRemarks(currentMonthDueRemarks)
                 .firstTimePayment(isFirstTime)
                 .proratedInfo(proratedInfo)
                 .totalOutstanding(totalOutstanding)

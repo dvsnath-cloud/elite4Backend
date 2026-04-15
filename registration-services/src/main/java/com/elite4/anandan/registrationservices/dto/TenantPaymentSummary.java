@@ -31,6 +31,14 @@ public class TenantPaymentSummary {
     private boolean currentMonthPaid;
     private TenantPaymentHistoryItem currentMonthPayment; // null if not paid
 
+    // ── Current month rent due (scheduler-generated PENDING record) ──
+    private boolean rentDueGenerated;           // true when scheduler has created a PENDING record for this month
+    private double currentMonthRentDue;          // rent amount due this month (from scheduler record)
+    private double currentMonthPendingBalance;   // carried-forward pending from previous months
+    private double currentMonthTotalDue;         // rentDue + pendingBalance
+    private LocalDate currentMonthDueDate;       // payment due date
+    private String currentMonthDueRemarks;       // scheduler remarks (e.g. pending balance info)
+
     // ── First-time payment detection ──
     private boolean firstTimePayment;
 

@@ -149,4 +149,9 @@ public interface RentPaymentTransactionRepository extends MongoRepository<RentPa
      * Find prorated payments for tenant
      */
     List<RentPaymentTransaction> findByTenantIdAndIsProratedPaymentTrue(String tenantId);
+
+    /**
+     * Find all transactions for a specific rent month (for scheduler idempotency)
+     */
+    List<RentPaymentTransaction> findByRentMonth(LocalDate rentMonth);
 }

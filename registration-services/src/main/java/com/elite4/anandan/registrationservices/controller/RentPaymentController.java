@@ -2,6 +2,7 @@ package com.elite4.anandan.registrationservices.controller;
 
 import com.elite4.anandan.registrationservices.dto.*;
 import com.elite4.anandan.registrationservices.service.RentPaymentService;
+import com.elite4.anandan.registrationservices.service.RentSchedulerService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -23,6 +24,7 @@ import java.util.Map;
 public class RentPaymentController {
 
     private final RentPaymentService rentPaymentService;
+    private final RentSchedulerService rentSchedulerService;
 
     /**
      * Record cash rent payment
@@ -393,6 +395,36 @@ public class RentPaymentController {
             return ResponseEntity.ok(result);
         } catch (Exception e) {
             log.error("Error retrieving monthly collection status", e);
+            Map<String, Object> error = new HashMap<>();
+            error.put("success", false);
+            error.put("message", e.getMessage());
+            return ResponseEntity.badRequest().body(error);
+        }
+    }
+
+    /**
+     * Manually trigger the monthly rent generation scheduler.
+     * Useful for testing or generating records for a specific month.
+     * POST /rentpayments/scheduler/generate-monthly-rent?month=2025-07-01 (optional, defaults to current month)
+     */
+    @PostMapping("/scheduler/generate-monthly-rent")
+    @PreAuthorize("hasAnyRole('ADMIN','MODERATOR')")
+    public ResponseEntity<?> triggerMonthlyRentGeneration(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate month) {
+        try {
+            LocalDate rentMonth = month != null ? month.withDayOfMonth(1) : LocalDate.now().withDayOfMonth(1);
+            log.info("POST /rentpayments/scheduler/generate-monthly-rent — Manual trigger for month: {}", rentMonth);
+
+            Map<String, Object> schedulerResult = rentSchedulerService.processMonthlyRent(rentMonth);
+
+            Map<String, Object> result = new HashMap<>();
+            result.put("success", true);
+            result.put("message", "Monthly rent records generated successfully");
+            result.put("data", schedulerResult);
+
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            log.error("Error triggering monthly rent generation", e);
             Map<String, Object> error = new HashMap<>();
             error.put("success", false);
             error.put("message", e.getMessage());
