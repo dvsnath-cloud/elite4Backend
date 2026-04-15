@@ -1,6 +1,8 @@
 package com.elite4.anandan.registrationservices.controller;
 
 import com.elite4.anandan.registrationservices.dto.*;
+import com.elite4.anandan.registrationservices.document.SchedulerJobLog;
+import com.elite4.anandan.registrationservices.repository.SchedulerJobLogRepository;
 import com.elite4.anandan.registrationservices.service.RentPaymentService;
 import com.elite4.anandan.registrationservices.service.RentSchedulerService;
 import lombok.RequiredArgsConstructor;
@@ -25,6 +27,7 @@ public class RentPaymentController {
 
     private final RentPaymentService rentPaymentService;
     private final RentSchedulerService rentSchedulerService;
+    private final SchedulerJobLogRepository jobLogRepository;
 
     /**
      * Record cash rent payment
@@ -425,6 +428,91 @@ public class RentPaymentController {
             return ResponseEntity.ok(result);
         } catch (Exception e) {
             log.error("Error triggering monthly rent generation", e);
+            Map<String, Object> error = new HashMap<>();
+            error.put("success", false);
+            error.put("message", e.getMessage());
+            return ResponseEntity.badRequest().body(error);
+        }
+    }
+
+    /**
+     * Get recent scheduler job logs (last 10 runs)
+     * GET /rentpayments/scheduler/logs
+     */
+    @GetMapping("/scheduler/logs")
+    @PreAuthorize("hasAnyRole('ADMIN','MODERATOR')")
+    public ResponseEntity<?> getSchedulerJobLogs() {
+        try {
+            log.info("GET /rentpayments/scheduler/logs");
+            List<SchedulerJobLog> logs = jobLogRepository.findTop10ByOrderByStartedAtDesc();
+
+            Map<String, Object> result = new HashMap<>();
+            result.put("success", true);
+            result.put("totalLogs", logs.size());
+            result.put("data", logs);
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            log.error("Error fetching scheduler logs", e);
+            Map<String, Object> error = new HashMap<>();
+            error.put("success", false);
+            error.put("message", e.getMessage());
+            return ResponseEntity.badRequest().body(error);
+        }
+    }
+
+    /**
+     * Get a specific scheduler job log by jobId
+     * GET /rentpayments/scheduler/logs/{jobId}
+     */
+    @GetMapping("/scheduler/logs/{jobId}")
+    @PreAuthorize("hasAnyRole('ADMIN','MODERATOR')")
+    public ResponseEntity<?> getSchedulerJobLog(@PathVariable String jobId) {
+        try {
+            log.info("GET /rentpayments/scheduler/logs/{}", jobId);
+            return jobLogRepository.findByJobId(jobId)
+                    .map(jobLog -> {
+                        Map<String, Object> result = new HashMap<>();
+                        result.put("success", true);
+                        result.put("data", jobLog);
+                        return ResponseEntity.ok((Object) result);
+                    })
+                    .orElseGet(() -> {
+                        Map<String, Object> error = new HashMap<>();
+                        error.put("success", false);
+                        error.put("message", "Job log not found for jobId: " + jobId);
+                        return ResponseEntity.status(404).body(error);
+                    });
+        } catch (Exception e) {
+            log.error("Error fetching scheduler job log", e);
+            Map<String, Object> error = new HashMap<>();
+            error.put("success", false);
+            error.put("message", e.getMessage());
+            return ResponseEntity.badRequest().body(error);
+        }
+    }
+
+    /**
+     * Get scheduler job logs for a specific month
+     * GET /rentpayments/scheduler/logs/month/{month} (format: YYYY-MM-01)
+     */
+    @GetMapping("/scheduler/logs/month/{month}")
+    @PreAuthorize("hasAnyRole('ADMIN','MODERATOR')")
+    public ResponseEntity<?> getSchedulerJobLogsByMonth(
+            @PathVariable @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate month) {
+        try {
+            LocalDate rentMonth = month.withDayOfMonth(1);
+            log.info("GET /rentpayments/scheduler/logs/month/{}", rentMonth);
+
+            List<SchedulerJobLog> logs = jobLogRepository.findByJobNameAndRentMonth("MONTHLY_RENT_GENERATION", rentMonth);
+
+            Map<String, Object> result = new HashMap<>();
+            result.put("success", true);
+            result.put("month", rentMonth.toString());
+            result.put("totalLogs", logs.size());
+            result.put("data", logs);
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            log.error("Error fetching scheduler logs by month", e);
             Map<String, Object> error = new HashMap<>();
             error.put("success", false);
             error.put("message", e.getMessage());

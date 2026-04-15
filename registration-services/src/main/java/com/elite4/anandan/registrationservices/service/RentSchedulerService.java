@@ -2,10 +2,13 @@ package com.elite4.anandan.registrationservices.service;
 
 import com.elite4.anandan.registrationservices.document.RegistrationDocument;
 import com.elite4.anandan.registrationservices.document.RentPaymentTransaction;
+import com.elite4.anandan.registrationservices.document.SchedulerJobLog;
+import com.elite4.anandan.registrationservices.document.SchedulerJobLog.*;
 import com.elite4.anandan.registrationservices.dto.Registration;
 import com.elite4.anandan.registrationservices.model.User;
 import com.elite4.anandan.registrationservices.repository.RentPaymentTransactionRepository;
 import com.elite4.anandan.registrationservices.repository.RegistrationRepository;
+import com.elite4.anandan.registrationservices.repository.SchedulerJobLogRepository;
 import com.elite4.anandan.registrationservices.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -27,6 +30,7 @@ public class RentSchedulerService {
     private final RegistrationRepository registrationRepository;
     private final UserRepository userRepository;
     private final NotificationClient notificationClient;
+    private final SchedulerJobLogRepository jobLogRepository;
 
     private static final List<RentPaymentTransaction.PaymentStatus> UNPAID_STATUSES = Arrays.asList(
             RentPaymentTransaction.PaymentStatus.PENDING,
@@ -45,7 +49,7 @@ public class RentSchedulerService {
     public void generateMonthlyRentRecords() {
         log.info("====== MONTHLY RENT SCHEDULER STARTED ======");
         LocalDate currentMonth = LocalDate.now().withDayOfMonth(1);
-        processMonthlyRent(currentMonth);
+        processMonthlyRent(currentMonth, TriggerType.SCHEDULED, "SCHEDULER");
         log.info("====== MONTHLY RENT SCHEDULER COMPLETED ======");
     }
 
@@ -53,91 +57,214 @@ public class RentSchedulerService {
      * Core logic — separated from @Scheduled so it can be triggered manually for any month.
      */
     public Map<String, Object> processMonthlyRent(LocalDate rentMonth) {
-        log.info("Processing monthly rent for: {}", rentMonth);
+        return processMonthlyRent(rentMonth, TriggerType.MANUAL, "MANUAL");
+    }
 
-        // 1. Get all active (OCCUPIED) tenants
-        List<RegistrationDocument> activeTenants = registrationRepository
-                .findByOccupied(Registration.roomOccupied.OCCUPIED);
-        log.info("Found {} active tenants", activeTenants.size());
+    public Map<String, Object> processMonthlyRent(LocalDate rentMonth, TriggerType triggerType, String triggeredBy) {
+        log.info("Processing monthly rent for: {} (trigger: {})", rentMonth, triggerType);
 
-        // 2. Get existing payment records for this month (idempotency check)
-        List<RentPaymentTransaction> existingRecords = paymentRepository.findByRentMonth(rentMonth);
-        Set<String> alreadyGenerated = existingRecords.stream()
-                .map(RentPaymentTransaction::getTenantId)
-                .collect(Collectors.toSet());
-        log.info("Found {} existing records for month {}", alreadyGenerated.size(), rentMonth);
+        String jobId = UUID.randomUUID().toString();
+        LocalDateTime startedAt = LocalDateTime.now();
+        List<TenantJobDetail> tenantDetails = new ArrayList<>();
+
+        // Per-colive tracking
+        Map<String, ColiveJobDetailBuilder> coliveBuilders = new LinkedHashMap<>();
 
         int created = 0;
         int skipped = 0;
         int notified = 0;
         int failed = 0;
+        int notificationsFailed = 0;
+        String topLevelError = null;
 
-        // Track per-owner summaries for owner notification
-        Map<String, OwnerMonthlySummary> ownerSummaries = new HashMap<>();
+        try {
+            // 1. Get all active (OCCUPIED) tenants
+            List<RegistrationDocument> activeTenants = registrationRepository
+                    .findByOccupied(Registration.roomOccupied.OCCUPIED);
+            log.info("Found {} active tenants", activeTenants.size());
 
-        for (RegistrationDocument tenant : activeTenants) {
-            try {
-                if (alreadyGenerated.contains(tenant.getId())) {
-                    log.debug("Skipping tenant {} — record already exists for {}", tenant.getId(), rentMonth);
-                    skipped++;
-                    continue;
+            // 2. Idempotency check
+            List<RentPaymentTransaction> existingRecords = paymentRepository.findByRentMonth(rentMonth);
+            Set<String> alreadyGenerated = existingRecords.stream()
+                    .map(RentPaymentTransaction::getTenantId)
+                    .collect(java.util.stream.Collectors.toSet());
+            log.info("Found {} existing records for month {}", alreadyGenerated.size(), rentMonth);
+
+            // Track per-owner summaries for owner notification
+            Map<String, OwnerMonthlySummary> ownerSummaries = new HashMap<>();
+
+            for (RegistrationDocument tenant : activeTenants) {
+                String coliveName = tenant.getColiveName() != null ? tenant.getColiveName() : "Unknown";
+                String ownerUsername = tenant.getColiveUserName() != null ? tenant.getColiveUserName() : "Unknown";
+                String roomNumber = tenant.getRoomForRegistration() != null
+                        ? tenant.getRoomForRegistration().getRoomNumber() : "N/A";
+
+                ColiveJobDetailBuilder coliveBuilder = coliveBuilders.computeIfAbsent(
+                        coliveName, k -> new ColiveJobDetailBuilder(coliveName, ownerUsername));
+
+                TenantJobDetail.TenantJobDetailBuilder td = TenantJobDetail.builder()
+                        .tenantId(tenant.getId())
+                        .tenantName(tenant.getFname() + " " + tenant.getLname())
+                        .coliveName(coliveName)
+                        .roomNumber(roomNumber);
+
+                try {
+                    // Skip if already generated
+                    if (alreadyGenerated.contains(tenant.getId())) {
+                        log.debug("Skipping tenant {} — record already exists for {}", tenant.getId(), rentMonth);
+                        td.paymentRecordStatus(StepStatus.SKIPPED);
+                        td.emailStatus(StepStatus.SKIPPED).smsStatus(StepStatus.SKIPPED).whatsappStatus(StepStatus.SKIPPED);
+                        tenantDetails.add(td.build());
+                        skipped++;
+                        coliveBuilder.recordSkipped();
+                        continue;
+                    }
+
+                    // Skip tenants with no rent
+                    if (tenant.getRoomRent() <= 0) {
+                        log.warn("Skipping tenant {} — roomRent is 0 or not set", tenant.getId());
+                        td.paymentRecordStatus(StepStatus.SKIPPED)
+                          .paymentRecordError("Room rent is 0 or not set");
+                        td.emailStatus(StepStatus.SKIPPED).smsStatus(StepStatus.SKIPPED).whatsappStatus(StepStatus.SKIPPED);
+                        tenantDetails.add(td.build());
+                        skipped++;
+                        coliveBuilder.recordSkipped();
+                        continue;
+                    }
+
+                    // 3. Calculate pending balance
+                    double pendingBalance = calculatePendingBalance(tenant.getId());
+                    td.rentAmount(tenant.getRoomRent()).pendingBalance(pendingBalance);
+
+                    // 4. Create PENDING rent record
+                    RentPaymentTransaction record = createPendingRecord(tenant, rentMonth, pendingBalance);
+                    record = paymentRepository.save(record);
+                    td.paymentRecordStatus(StepStatus.SUCCESS).paymentRecordId(record.getId());
+                    created++;
+                    coliveBuilder.recordCreated(tenant.getRoomRent(), pendingBalance);
+                    log.info("Created rent record for tenant {} ({}), rent=₹{}, pending=₹{}",
+                            tenant.getFname() + " " + tenant.getLname(),
+                            tenant.getId(), tenant.getRoomRent(), pendingBalance);
+
+                    // 5. Send notifications (track each channel separately)
+                    NotificationResult notifResult = sendTenantRentDueNotificationTracked(tenant, rentMonth, pendingBalance);
+                    td.emailStatus(notifResult.emailStatus).emailError(notifResult.emailError);
+                    td.smsStatus(notifResult.smsStatus).smsError(notifResult.smsError);
+                    td.whatsappStatus(notifResult.whatsappStatus).whatsappError(notifResult.whatsappError);
+
+                    boolean anyNotifSent = notifResult.emailStatus == StepStatus.SUCCESS
+                            || notifResult.smsStatus == StepStatus.SUCCESS
+                            || notifResult.whatsappStatus == StepStatus.SUCCESS;
+                    if (anyNotifSent) {
+                        notified++;
+                        coliveBuilder.notificationSent();
+                    } else {
+                        notificationsFailed++;
+                        coliveBuilder.notificationFailed();
+                    }
+
+                    // 6. Accumulate owner summary
+                    if (tenant.getColiveUserName() != null) {
+                        ownerSummaries.computeIfAbsent(tenant.getColiveUserName(), k -> new OwnerMonthlySummary())
+                                .addTenant(tenant, pendingBalance);
+                    }
+
+                } catch (Exception e) {
+                    failed++;
+                    coliveBuilder.recordFailed();
+                    td.paymentRecordStatus(td.build().getPaymentRecordStatus() != null
+                            ? td.build().getPaymentRecordStatus() : StepStatus.FAILED);
+                    td.overallError(e.getMessage());
+                    log.error("Failed to process tenant {}: {}", tenant.getId(), e.getMessage(), e);
                 }
 
-                // Skip tenants with no rent configured
-                if (tenant.getRoomRent() <= 0) {
-                    log.warn("Skipping tenant {} — roomRent is 0 or not set", tenant.getId());
-                    skipped++;
-                    continue;
-                }
-
-                // 3. Calculate pending balance from previous months
-                double pendingBalance = calculatePendingBalance(tenant.getId());
-
-                // 4. Create PENDING rent record
-                RentPaymentTransaction record = createPendingRecord(tenant, rentMonth, pendingBalance);
-                paymentRepository.save(record);
-                created++;
-                log.info("Created rent record for tenant {} ({}), rent=₹{}, pending=₹{}",
-                        tenant.getFname() + " " + tenant.getLname(),
-                        tenant.getId(), tenant.getRoomRent(), pendingBalance);
-
-                // 5. Send notification to tenant
-                sendTenantRentDueNotification(tenant, rentMonth, pendingBalance);
-                notified++;
-
-                // 6. Accumulate owner summary
-                String ownerKey = tenant.getColiveUserName();
-                if (ownerKey != null) {
-                    ownerSummaries.computeIfAbsent(ownerKey, k -> new OwnerMonthlySummary())
-                            .addTenant(tenant, pendingBalance);
-                }
-
-            } catch (Exception e) {
-                failed++;
-                log.error("Failed to process tenant {}: {}", tenant.getId(), e.getMessage(), e);
+                tenantDetails.add(td.build());
             }
+
+            // 7. Send owner summaries and track status
+            for (Map.Entry<String, OwnerMonthlySummary> entry : ownerSummaries.entrySet()) {
+                ColiveJobDetailBuilder coliveBuilder = coliveBuilders.values().stream()
+                        .filter(b -> entry.getKey().equals(b.ownerUsername))
+                        .findFirst().orElse(null);
+                try {
+                    sendOwnerMonthlySummaryNotification(entry.getKey(), rentMonth, entry.getValue());
+                    if (coliveBuilder != null) coliveBuilder.ownerNotifSuccess();
+                } catch (Exception e) {
+                    log.error("Failed to send summary to owner {}: {}", entry.getKey(), e.getMessage());
+                    if (coliveBuilder != null) coliveBuilder.ownerNotifFailed(e.getMessage());
+                }
+            }
+
+        } catch (Exception e) {
+            topLevelError = e.getMessage();
+            log.error("CRITICAL: Scheduler job failed: {}", e.getMessage(), e);
         }
 
-        // 7. Send summary notification to each property owner
-        for (Map.Entry<String, OwnerMonthlySummary> entry : ownerSummaries.entrySet()) {
-            try {
-                sendOwnerMonthlySummaryNotification(entry.getKey(), rentMonth, entry.getValue());
-            } catch (Exception e) {
-                log.error("Failed to send summary to owner {}: {}", entry.getKey(), e.getMessage());
-            }
+        // ── Build and persist the job log ──
+        LocalDateTime completedAt = LocalDateTime.now();
+        long durationMs = java.time.Duration.between(startedAt, completedAt).toMillis();
+
+        JobStatus jobStatus;
+        if (topLevelError != null) {
+            jobStatus = JobStatus.FAILURE;
+        } else if (failed > 0) {
+            jobStatus = JobStatus.PARTIAL_FAILURE;
+        } else {
+            jobStatus = JobStatus.SUCCESS;
+        }
+
+        List<ColiveJobDetail> coliveDetailsList = new ArrayList<>();
+        int ownersSummaryNotified = 0;
+        for (ColiveJobDetailBuilder b : coliveBuilders.values()) {
+            ColiveJobDetail detail = b.build();
+            coliveDetailsList.add(detail);
+            if (detail.getOwnerNotificationStatus() == StepStatus.SUCCESS) ownersSummaryNotified++;
+        }
+
+        SchedulerJobLog jobLog = SchedulerJobLog.builder()
+                .jobId(jobId)
+                .jobName("MONTHLY_RENT_GENERATION")
+                .rentMonth(rentMonth)
+                .triggerType(triggerType)
+                .triggeredBy(triggeredBy)
+                .startedAt(startedAt)
+                .completedAt(completedAt)
+                .durationMs(durationMs)
+                .status(jobStatus)
+                .errorMessage(topLevelError)
+                .totalActiveTenants(tenantDetails.size())
+                .recordsCreated(created)
+                .recordsSkipped(skipped)
+                .recordsFailed(failed)
+                .notificationsSent(notified)
+                .notificationsFailed(notificationsFailed)
+                .ownersSummaryNotified(ownersSummaryNotified)
+                .coliveDetails(coliveDetailsList)
+                .tenantDetails(tenantDetails)
+                .build();
+
+        try {
+            jobLogRepository.save(jobLog);
+            log.info("Scheduler job log persisted — jobId={}, status={}, created={}, failed={}",
+                    jobId, jobStatus, created, failed);
+        } catch (Exception e) {
+            log.error("Failed to persist scheduler job log: {}", e.getMessage(), e);
         }
 
         log.info("Monthly rent processing complete — created: {}, skipped: {}, notified: {}, failed: {}",
                 created, skipped, notified, failed);
 
         Map<String, Object> result = new LinkedHashMap<>();
+        result.put("jobId", jobId);
+        result.put("status", jobStatus.toString());
         result.put("month", rentMonth.toString());
-        result.put("totalActiveTenants", activeTenants.size());
+        result.put("totalActiveTenants", tenantDetails.size());
         result.put("recordsCreated", created);
         result.put("recordsSkipped", skipped);
         result.put("notificationsSent", notified);
         result.put("failures", failed);
-        result.put("ownersSummaryNotified", ownerSummaries.size());
+        result.put("ownersSummaryNotified", ownersSummaryNotified);
+        result.put("durationMs", durationMs);
         return result;
     }
 
@@ -193,30 +320,86 @@ public class RentSchedulerService {
     private void sendTenantRentDueNotification(RegistrationDocument tenant,
                                                 LocalDate rentMonth,
                                                 double pendingBalance) {
+        sendTenantRentDueNotificationTracked(tenant, rentMonth, pendingBalance);
+    }
+
+    /**
+     * Send rent-due notification per channel and return tracked result.
+     */
+    private NotificationResult sendTenantRentDueNotificationTracked(RegistrationDocument tenant,
+                                                                     LocalDate rentMonth,
+                                                                     double pendingBalance) {
+        NotificationResult result = new NotificationResult();
         try {
             String monthName = rentMonth.format(DateTimeFormatter.ofPattern("MMMM yyyy"));
             double totalDue = tenant.getRoomRent() + pendingBalance;
-
             String message = buildTenantNotificationMessage(tenant, monthName, pendingBalance, totalDue);
             String subject = "Rent Due for " + monthName + " - CoLive Connect";
 
             // Email
             if (tenant.getEmail() != null && !tenant.getEmail().isBlank()) {
-                notificationClient.sendEmail(tenant.getEmail(), subject, message);
-            }
-            // SMS
-            if (tenant.getContactNo() != null && !tenant.getContactNo().isBlank()) {
-                notificationClient.sendSms(tenant.getContactNo(), message);
-            }
-            // WhatsApp
-            if (tenant.getContactNo() != null && !tenant.getContactNo().isBlank()) {
-                notificationClient.sendWhatsapp(tenant.getContactNo(), message);
+                try {
+                    notificationClient.sendEmail(tenant.getEmail(), subject, message);
+                    result.emailStatus = StepStatus.SUCCESS;
+                } catch (Exception e) {
+                    result.emailStatus = StepStatus.FAILED;
+                    result.emailError = e.getMessage();
+                    log.warn("Email failed for tenant {}: {}", tenant.getId(), e.getMessage());
+                }
+            } else {
+                result.emailStatus = StepStatus.SKIPPED;
+                result.emailError = "No email configured";
             }
 
-            log.debug("Sent rent-due notification to tenant {}", tenant.getId());
+            // SMS
+            if (tenant.getContactNo() != null && !tenant.getContactNo().isBlank()) {
+                try {
+                    notificationClient.sendSms(tenant.getContactNo(), message);
+                    result.smsStatus = StepStatus.SUCCESS;
+                } catch (Exception e) {
+                    result.smsStatus = StepStatus.FAILED;
+                    result.smsError = e.getMessage();
+                    log.warn("SMS failed for tenant {}: {}", tenant.getId(), e.getMessage());
+                }
+            } else {
+                result.smsStatus = StepStatus.SKIPPED;
+                result.smsError = "No contact number configured";
+            }
+
+            // WhatsApp
+            if (tenant.getContactNo() != null && !tenant.getContactNo().isBlank()) {
+                try {
+                    notificationClient.sendWhatsapp(tenant.getContactNo(), message);
+                    result.whatsappStatus = StepStatus.SUCCESS;
+                } catch (Exception e) {
+                    result.whatsappStatus = StepStatus.FAILED;
+                    result.whatsappError = e.getMessage();
+                    log.warn("WhatsApp failed for tenant {}: {}", tenant.getId(), e.getMessage());
+                }
+            } else {
+                result.whatsappStatus = StepStatus.SKIPPED;
+                result.whatsappError = "No contact number configured";
+            }
+
+            log.debug("Notification result for tenant {}: email={}, sms={}, whatsapp={}",
+                    tenant.getId(), result.emailStatus, result.smsStatus, result.whatsappStatus);
         } catch (Exception e) {
             log.warn("Failed to send notification to tenant {}: {}", tenant.getId(), e.getMessage());
+            if (result.emailStatus == null) result.emailStatus = StepStatus.FAILED;
+            if (result.smsStatus == null) result.smsStatus = StepStatus.FAILED;
+            if (result.whatsappStatus == null) result.whatsappStatus = StepStatus.FAILED;
         }
+        return result;
+    }
+
+    /** Holds per-channel notification result */
+    private static class NotificationResult {
+        StepStatus emailStatus;
+        String emailError;
+        StepStatus smsStatus;
+        String smsError;
+        StepStatus whatsappStatus;
+        String whatsappError;
     }
 
     private String buildTenantNotificationMessage(RegistrationDocument tenant,
@@ -370,6 +553,70 @@ public class RentSchedulerService {
             this.name = name;
             this.roomNumber = roomNumber;
             this.pendingAmount = pendingAmount;
+        }
+    }
+
+    /** Mutable builder for per-colive aggregation during job execution */
+    private static class ColiveJobDetailBuilder {
+        String coliveName;
+        String ownerUsername;
+        int tenantsProcessed = 0;
+        int recordsCreated = 0;
+        int recordsSkipped = 0;
+        int recordsFailed = 0;
+        int notificationsSent = 0;
+        int notificationsFailed = 0;
+        double totalRentGenerated = 0;
+        double totalPendingCarryForward = 0;
+        StepStatus ownerNotificationStatus;
+        String ownerNotificationError;
+
+        ColiveJobDetailBuilder(String coliveName, String ownerUsername) {
+            this.coliveName = coliveName;
+            this.ownerUsername = ownerUsername;
+        }
+
+        void recordCreated(double rent, double pending) {
+            tenantsProcessed++;
+            recordsCreated++;
+            totalRentGenerated += rent;
+            totalPendingCarryForward += pending;
+        }
+
+        void recordSkipped() {
+            tenantsProcessed++;
+            recordsSkipped++;
+        }
+
+        void recordFailed() {
+            tenantsProcessed++;
+            recordsFailed++;
+        }
+
+        void notificationSent() { notificationsSent++; }
+        void notificationFailed() { notificationsFailed++; }
+
+        void ownerNotifSuccess() { ownerNotificationStatus = StepStatus.SUCCESS; }
+        void ownerNotifFailed(String error) {
+            ownerNotificationStatus = StepStatus.FAILED;
+            ownerNotificationError = error;
+        }
+
+        ColiveJobDetail build() {
+            return ColiveJobDetail.builder()
+                    .coliveName(coliveName)
+                    .ownerUsername(ownerUsername)
+                    .tenantsProcessed(tenantsProcessed)
+                    .recordsCreated(recordsCreated)
+                    .recordsSkipped(recordsSkipped)
+                    .recordsFailed(recordsFailed)
+                    .notificationsSent(notificationsSent)
+                    .notificationsFailed(notificationsFailed)
+                    .totalRentGenerated(totalRentGenerated)
+                    .totalPendingCarryForward(totalPendingCarryForward)
+                    .ownerNotificationStatus(ownerNotificationStatus)
+                    .ownerNotificationError(ownerNotificationError)
+                    .build();
         }
     }
 }
