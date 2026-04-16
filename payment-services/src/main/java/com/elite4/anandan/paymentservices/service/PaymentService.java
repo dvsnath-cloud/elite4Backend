@@ -33,7 +33,7 @@ public class PaymentService {
                           @Value("${razorpay.keySecret}") String keySecret,
                           @Value("${razorpay.companyName:CoLive Connect}") String companyName,
                           @Value("${razorpay.platformFee:4900}") int platformFee,
-                          @Value("${razorpay.routeEnabled:false}") boolean routeEnabled,
+                          @Value("${razorpay.routeEnabled:true}") boolean routeEnabled,
                           NotificationClient notificationClient,
                           LinkedAccountService linkedAccountService) throws Exception {
         log.info("Initializing Razorpay client with keyId={}, routeEnabled={}, platformFee={}", keyId, routeEnabled, platformFee);
