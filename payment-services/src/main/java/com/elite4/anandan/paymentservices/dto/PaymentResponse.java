@@ -18,4 +18,7 @@ public class PaymentResponse {
     private Boolean verified;
     private String message;
     private String verifiedAt;
+    private Boolean routeTransferIncluded;
+    private Integer ownerSettlementAmount;
+    private Integer platformFeeAmount;
 }

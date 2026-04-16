@@ -89,7 +89,15 @@ public class RouteController {
         if (primary.isEmpty()) {
             return ResponseEntity.ok(Map.of("found", false, "message", "No primary bank account configured"));
         }
-        return ResponseEntity.ok(Map.of("found", true, "account", primary.get()));
+        LinkedAccountDocument acc = primary.get();
+        Map<String, Object> response = new java.util.HashMap<>();
+        response.put("found", true);
+        response.put("account", acc);
+        response.put("razorpaySynced", acc.isRazorpaySynced());
+        response.put("activationStatus", acc.getActivationStatus() != null ? acc.getActivationStatus() : "unknown");
+        response.put("kycStatus", acc.getKycStatus() != null ? acc.getKycStatus() : "unknown");
+        response.put("razorpayAccountId", acc.getRazorpayAccountId());
+        return ResponseEntity.ok(response);
     }
 
     @PutMapping("/linked-accounts/{accountId}/set-primary")
@@ -199,6 +207,29 @@ public class RouteController {
         log.info("GET /payments/route/transfers → owner={}", ownerUsername);
         List<PaymentTransferDocument> transfers = routeService.getTransfersByOwner(ownerUsername);
         return ResponseEntity.ok(transfers);
+    }
+
+    // ── Razorpay Sync Retry ────────────────────────────────────────
+
+    @PostMapping("/linked-accounts/retry-sync")
+    public ResponseEntity<?> retrySyncUnsynced() {
+        log.info("POST /payments/route/linked-accounts/retry-sync — manual trigger");
+        int synced = linkedAccountService.retryUnsyncedAccounts();
+        return ResponseEntity.ok(Map.of(
+                "message", "Retry complete",
+                "syncedCount", synced,
+                "remainingUnsynced", linkedAccountService.getUnsyncedAccounts().size()
+        ));
+    }
+
+    @GetMapping("/linked-accounts/unsynced")
+    public ResponseEntity<?> getUnsyncedAccounts() {
+        log.info("GET /payments/route/linked-accounts/unsynced");
+        List<LinkedAccountDocument> unsynced = linkedAccountService.getUnsyncedAccounts();
+        return ResponseEntity.ok(Map.of(
+                "count", unsynced.size(),
+                "accounts", unsynced
+        ));
     }
 
     @GetMapping("/transfers/{paymentId}")

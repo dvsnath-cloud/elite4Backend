@@ -13,4 +13,5 @@ public interface LinkedAccountRepository extends MongoRepository<LinkedAccountDo
     Optional<LinkedAccountDocument> findByOwnerUsernameAndColiveNameAndPrimaryTrue(String ownerUsername, String coliveName);
     Optional<LinkedAccountDocument> findByRazorpayAccountId(String razorpayAccountId);
     List<LinkedAccountDocument> findByOwnerUsername(String ownerUsername);
+    List<LinkedAccountDocument> findByRazorpaySyncedFalse();
 }

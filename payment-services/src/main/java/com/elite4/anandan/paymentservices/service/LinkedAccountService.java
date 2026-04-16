@@ -22,6 +22,7 @@ import java.time.LocalDateTime;
 import java.util.Base64;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -84,9 +85,12 @@ public class LinkedAccountService {
             bankAccount.put("account_number", request.getAccountNumber());
             bankAccount.put("account_type", "current");
 
+            // Include bank_account in the /v2/accounts request for settlement setup
+            accountRequest.put("bank_account", bankAccount);
+
             JSONObject profile = new JSONObject();
             profile.put("category", "housing");
-            profile.put("subcategory", "property_management");
+            profile.put("subcategory", "pg_and_hostels");
             if (request.getBusinessAddress() != null) {
                 JSONObject addresses = new JSONObject();
                 JSONObject registered = new JSONObject();
@@ -111,6 +115,8 @@ public class LinkedAccountService {
             // Call Razorpay /v2/accounts
             String razorpayAccountId;
             String activationStatus = "NEW";
+            boolean razorpaySynced = false;
+            String syncFailureReason = null;
 
             try {
                 HttpHeaders headers = createAuthHeaders();
@@ -124,6 +130,7 @@ public class LinkedAccountService {
                 JSONObject responseBody = new JSONObject(response.getBody());
                 razorpayAccountId = responseBody.getString("id");
                 activationStatus = responseBody.optString("status", "created");
+                razorpaySynced = true;
 
                 log.info("Razorpay account created: id={}, status={}", razorpayAccountId, activationStatus);
 
@@ -131,11 +138,13 @@ public class LinkedAccountService {
                 configureProductForAccount(razorpayAccountId, bankAccount);
 
             } catch (Exception apiEx) {
-                log.warn("Razorpay API call failed (test mode fallback): {}", apiEx.getMessage());
-                // Test mode fallback — generate placeholder ID
-                razorpayAccountId = "acc_" + System.currentTimeMillis();
-                activationStatus = "CREATED";
-                log.info("Using test-mode placeholder account: {}", razorpayAccountId);
+                log.error("Razorpay API call failed for owner={}, colive={}: {}",
+                        request.getOwnerUsername(), request.getColiveName(), apiEx.getMessage(), apiEx);
+                // Save with placeholder ID — will be retried by scheduled sync job
+                razorpayAccountId = "acc_pending_" + System.currentTimeMillis();
+                activationStatus = "PENDING_SYNC";
+                syncFailureReason = apiEx.getMessage();
+                log.warn("Saved with pending sync placeholder: {}. Will retry via scheduled job.", razorpayAccountId);
             }
 
             // Check if this is the first account for this owner+colive → auto-set as primary
@@ -162,16 +171,21 @@ public class LinkedAccountService {
             doc.setBusinessAddress(request.getBusinessAddress());
             doc.setKycStatus("NOT_SUBMITTED");
             doc.setActivationStatus(activationStatus);
+            doc.setRazorpaySynced(razorpaySynced);
+            doc.setSyncFailureReason(syncFailureReason);
             doc.setPrimary(shouldBePrimary);
-            doc.setStatus("ACTIVE");
+            doc.setStatus(razorpaySynced ? "ACTIVE" : "PENDING_SYNC");
             doc.setCreatedAt(LocalDateTime.now());
             doc.setUpdatedAt(LocalDateTime.now());
 
             LinkedAccountDocument saved = linkedAccountRepository.save(doc);
-            log.info("Linked account created: id={}, razorpayAccountId={}, primary={}",
-                    saved.getId(), saved.getRazorpayAccountId(), saved.isPrimary());
+            log.info("Linked account created: id={}, razorpayAccountId={}, primary={}, razorpaySynced={}",
+                    saved.getId(), saved.getRazorpayAccountId(), saved.isPrimary(), saved.isRazorpaySynced());
 
-            return toResponse(saved, "Bank account added successfully." + (shouldBePrimary ? " Set as primary." : ""));
+            String message = razorpaySynced
+                    ? "Bank account added successfully." + (shouldBePrimary ? " Set as primary." : "")
+                    : "Bank account saved locally. Razorpay sync pending — will retry automatically.";
+            return toResponse(saved, message);
 
         } catch (Exception e) {
             log.error("Failed to create linked account for owner={}, colive={}: {}",
@@ -310,9 +324,9 @@ public class LinkedAccountService {
             return stakeholderId;
 
         } catch (Exception e) {
-            log.warn("Stakeholder creation failed for account {} (test-mode fallback): {}",
-                    razorpayAccountId, e.getMessage());
-            return "sth_" + System.currentTimeMillis();
+            log.error("Stakeholder creation failed for account {}: {}",
+                    razorpayAccountId, e.getMessage(), e);
+            throw new RuntimeException("Failed to create stakeholder on Razorpay: " + e.getMessage(), e);
         }
     }
 
@@ -447,8 +461,9 @@ public class LinkedAccountService {
             return "doc_" + System.currentTimeMillis();
 
         } catch (Exception e) {
-            log.warn("Razorpay document upload API failed (test-mode fallback): {}", e.getMessage());
-            return "doc_" + System.currentTimeMillis();
+            log.error("Razorpay document upload API failed for account={}, stakeholder={}, type={}: {}",
+                    razorpayAccountId, stakeholderId, documentType, e.getMessage(), e);
+            throw new RuntimeException("Failed to upload document to Razorpay: " + e.getMessage(), e);
         }
     }
 
@@ -510,7 +525,30 @@ public class LinkedAccountService {
     }
 
     public Optional<LinkedAccountDocument> getPrimaryAccount(String ownerUsername, String coliveName) {
-        return linkedAccountRepository.findByOwnerUsernameAndColiveNameAndPrimaryTrue(ownerUsername, coliveName);
+        Optional<LinkedAccountDocument> primary = linkedAccountRepository
+                .findByOwnerUsernameAndColiveNameAndPrimaryTrue(ownerUsername, coliveName);
+
+        // If primary exists and is synced with Razorpay, return it
+        if (primary.isPresent() && primary.get().isRazorpaySynced()) {
+            return primary;
+        }
+
+        // If primary exists but is NOT synced, try to find any synced account for this owner+colive
+        List<LinkedAccountDocument> allAccounts = linkedAccountRepository
+                .findByOwnerUsernameAndColiveName(ownerUsername, coliveName);
+
+        Optional<LinkedAccountDocument> syncedAccount = allAccounts.stream()
+                .filter(LinkedAccountDocument::isRazorpaySynced)
+                .findFirst();
+
+        if (syncedAccount.isPresent()) {
+            log.info("Primary account is unsynced. Returning first synced account {} for owner={}, colive={}",
+                    syncedAccount.get().getId(), ownerUsername, coliveName);
+            return syncedAccount;
+        }
+
+        // No synced accounts found — return the primary anyway (UI will show sync status)
+        return primary;
     }
 
     public Optional<LinkedAccountDocument> getLinkedAccountById(String id) {
@@ -584,6 +622,124 @@ public class LinkedAccountService {
         return linkedAccountRepository.save(doc);
     }
 
+    /**
+     * Retry Razorpay sync for all unsynced accounts (razorpaySynced=false).
+     * Called by the scheduled job or manually via API.
+     */
+    public int retryUnsyncedAccounts() {
+        List<LinkedAccountDocument> unsyncedAccounts = linkedAccountRepository.findByRazorpaySyncedFalse();
+        if (unsyncedAccounts.isEmpty()) {
+            log.info("No unsynced linked accounts found. Nothing to retry.");
+            return 0;
+        }
+
+        log.info("Found {} unsynced linked accounts. Starting retry...", unsyncedAccounts.size());
+        int successCount = 0;
+
+        for (LinkedAccountDocument doc : unsyncedAccounts) {
+            try {
+                // Rebuild the Razorpay /v2/accounts request from stored fields
+                JSONObject accountRequest = new JSONObject();
+                accountRequest.put("email", doc.getEmail());
+                accountRequest.put("phone", doc.getPhone());
+                accountRequest.put("type", "route");
+                accountRequest.put("legal_business_name", doc.getLegalBusinessName() != null
+                        ? doc.getLegalBusinessName() : doc.getContactName());
+                accountRequest.put("business_type", doc.getBusinessType() != null
+                        ? doc.getBusinessType() : "individual");
+                accountRequest.put("contact_name", doc.getContactName());
+
+                // Legal info
+                JSONObject legalInfo = new JSONObject();
+                if (doc.getPanNumber() != null && !doc.getPanNumber().isBlank()) {
+                    legalInfo.put("pan", doc.getPanNumber());
+                }
+                if (doc.getGstNumber() != null && !doc.getGstNumber().isBlank()) {
+                    legalInfo.put("gst", doc.getGstNumber());
+                }
+                if (legalInfo.length() > 0) {
+                    accountRequest.put("legal_info", legalInfo);
+                }
+
+                // Bank account
+                JSONObject bankAccount = new JSONObject();
+                bankAccount.put("ifsc_code", doc.getIfscCode());
+                bankAccount.put("beneficiary_name", doc.getBeneficiaryName());
+                bankAccount.put("account_number", doc.getAccountNumber());
+                bankAccount.put("account_type", "current");
+                accountRequest.put("bank_account", bankAccount);
+
+                // Profile
+                JSONObject profile = new JSONObject();
+                profile.put("category", "housing");
+                profile.put("subcategory", "pg_and_hostels");
+                if (doc.getBusinessAddress() != null) {
+                    JSONObject addresses = new JSONObject();
+                    JSONObject registered = new JSONObject();
+                    registered.put("street1", doc.getBusinessAddress());
+                    registered.put("city", "NA");
+                    registered.put("state", "NA");
+                    registered.put("postal_code", "000000");
+                    registered.put("country", "IN");
+                    addresses.put("registered", registered);
+                    profile.put("addresses", addresses);
+                }
+                accountRequest.put("profile", profile);
+
+                JSONObject notes = new JSONObject();
+                notes.put("ownerUsername", doc.getOwnerUsername());
+                notes.put("coliveName", doc.getColiveName());
+                notes.put("platform", "CoLive Connect");
+                accountRequest.put("notes", notes);
+
+                // Call Razorpay
+                HttpHeaders headers = createAuthHeaders();
+                headers.setContentType(MediaType.APPLICATION_JSON);
+                HttpEntity<String> entity = new HttpEntity<>(accountRequest.toString(), headers);
+
+                ResponseEntity<String> response = restTemplate.exchange(
+                        RAZORPAY_BASE_URL + "/v2/accounts",
+                        HttpMethod.POST, entity, String.class);
+
+                JSONObject responseBody = new JSONObject(response.getBody());
+                String razorpayAccountId = responseBody.getString("id");
+                String activationStatus = responseBody.optString("status", "created");
+
+                // Update the document with real Razorpay data
+                doc.setRazorpayAccountId(razorpayAccountId);
+                doc.setActivationStatus(activationStatus);
+                doc.setRazorpaySynced(true);
+                doc.setSyncFailureReason(null);
+                doc.setStatus("ACTIVE");
+                doc.setUpdatedAt(LocalDateTime.now());
+                linkedAccountRepository.save(doc);
+
+                log.info("Retry SUCCESS: account {} synced to Razorpay as {}", doc.getId(), razorpayAccountId);
+
+                // Configure product
+                configureProductForAccount(razorpayAccountId, bankAccount);
+                successCount++;
+
+            } catch (Exception e) {
+                log.warn("Retry FAILED for account {} (owner={}, colive={}): {}",
+                        doc.getId(), doc.getOwnerUsername(), doc.getColiveName(), e.getMessage());
+                doc.setSyncFailureReason(e.getMessage());
+                doc.setUpdatedAt(LocalDateTime.now());
+                linkedAccountRepository.save(doc);
+            }
+        }
+
+        log.info("Retry complete: {}/{} accounts synced successfully.", successCount, unsyncedAccounts.size());
+        return successCount;
+    }
+
+    /**
+     * Get all unsynced accounts for monitoring/dashboard.
+     */
+    public List<LinkedAccountDocument> getUnsyncedAccounts() {
+        return linkedAccountRepository.findByRazorpaySyncedFalse();
+    }
+
     private LinkedAccountResponse toResponse(LinkedAccountDocument doc, String message) {
         List<String> uploadedDocTypes = doc.getUploadedDocuments() != null
                 ? doc.getUploadedDocuments().stream()
@@ -608,6 +764,8 @@ public class LinkedAccountService {
                 .activationStatus(doc.getActivationStatus())
                 .panNumber(doc.getPanNumber())
                 .gstNumber(doc.getGstNumber())
+                .razorpaySynced(doc.isRazorpaySynced())
+                .syncFailureReason(doc.getSyncFailureReason())
                 .uploadedDocumentTypes(uploadedDocTypes)
                 .message(message)
                 .build();

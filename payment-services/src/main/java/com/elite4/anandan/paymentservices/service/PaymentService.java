@@ -1,14 +1,17 @@
 package com.elite4.anandan.paymentservices.service;
 
+import com.elite4.anandan.paymentservices.document.LinkedAccountDocument;
 import com.elite4.anandan.paymentservices.dto.PaymentRequest;
 import com.razorpay.Order;
 import com.razorpay.RazorpayClient;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import lombok.extern.slf4j.Slf4j;
+import org.json.JSONArray;
 import org.json.JSONObject;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -19,20 +22,29 @@ public class PaymentService {
 
     private final RazorpayClient razorpayClient;
     private final NotificationClient notificationClient;
+    private final LinkedAccountService linkedAccountService;
     private final String keyId;
     private final String keySecret;
     private final String companyName;
+    private final int platformFee;
+    private final boolean routeEnabled;
 
     public PaymentService(@Value("${razorpay.keyId}") String keyId,
                           @Value("${razorpay.keySecret}") String keySecret,
                           @Value("${razorpay.companyName:CoLive Connect}") String companyName,
-                          NotificationClient notificationClient) throws Exception {
-        log.info("Initializing Razorpay client with keyId={}", keyId);
+                          @Value("${razorpay.platformFee:4900}") int platformFee,
+                          @Value("${razorpay.routeEnabled:false}") boolean routeEnabled,
+                          NotificationClient notificationClient,
+                          LinkedAccountService linkedAccountService) throws Exception {
+        log.info("Initializing Razorpay client with keyId={}, routeEnabled={}, platformFee={}", keyId, routeEnabled, platformFee);
         this.razorpayClient = new RazorpayClient(keyId, keySecret);
         this.notificationClient = notificationClient;
+        this.linkedAccountService = linkedAccountService;
         this.keyId = keyId;
         this.keySecret = keySecret;
         this.companyName = companyName;
+        this.platformFee = platformFee;
+        this.routeEnabled = routeEnabled;
         log.info("Razorpay client initialized successfully, companyName={}", companyName);
     }
 
@@ -50,6 +62,48 @@ public class PaymentService {
         notes.put("ownerUsername", safe(request.getOwnerUsername()));
         notes.put("coliveName", safe(request.getColiveName()));
         options.put("notes", notes);
+
+        // Razorpay Route: add transfer to owner's linked account
+        if (routeEnabled && request.getOwnerUsername() != null && request.getColiveName() != null) {
+            try {
+                Optional<LinkedAccountDocument> linkedAccount = linkedAccountService
+                        .getPrimaryAccount(request.getOwnerUsername(), request.getColiveName());
+
+                if (linkedAccount.isPresent() && linkedAccount.get().isRazorpaySynced()
+                        && linkedAccount.get().getRazorpayAccountId() != null) {
+                    LinkedAccountDocument acc = linkedAccount.get();
+                    int transferAmount = request.getAmount() - platformFee;
+                    if (transferAmount > 0) {
+                        JSONObject transfer = new JSONObject();
+                        transfer.put("account", acc.getRazorpayAccountId());
+                        transfer.put("amount", transferAmount);
+                        transfer.put("currency", "INR");
+                        transfer.put("on_hold", 0);
+
+                        JSONObject transferNotes = new JSONObject();
+                        transferNotes.put("ownerUsername", safe(request.getOwnerUsername()));
+                        transferNotes.put("coliveName", safe(request.getColiveName()));
+                        transferNotes.put("tenantName", safe(request.getTenantName()));
+                        transferNotes.put("platformFee", platformFee);
+                        transfer.put("notes", transferNotes);
+
+                        JSONArray transfers = new JSONArray();
+                        transfers.put(transfer);
+                        options.put("transfers", transfers);
+
+                        log.info("Razorpay Route → transfer {}p to linked account {} (owner={}, colive={}), platform fee={}p",
+                                transferAmount, acc.getRazorpayAccountId(), request.getOwnerUsername(),
+                                request.getColiveName(), platformFee);
+                    }
+                } else {
+                    log.warn("Razorpay Route → no synced linked account for owner={}, colive={}. Order will be created without transfer.",
+                            request.getOwnerUsername(), request.getColiveName());
+                }
+            } catch (Exception e) {
+                log.error("Razorpay Route → failed to lookup linked account for owner={}, colive={}. Proceeding without transfer.",
+                        request.getOwnerUsername(), request.getColiveName(), e);
+            }
+        }
 
         log.info("Razorpay API → POST https://api.razorpay.com/v1/orders, payload={}", options);
         Order order = razorpayClient.orders.create(options);
@@ -82,6 +136,24 @@ public class PaymentService {
 
     public String getCompanyName() {
         return companyName;
+    }
+
+    public boolean isRouteEnabled() {
+        return routeEnabled;
+    }
+
+    public int getPlatformFee() {
+        return platformFee;
+    }
+
+    public boolean hasLinkedAccount(String ownerUsername, String coliveName) {
+        if (ownerUsername == null || coliveName == null) return false;
+        try {
+            Optional<LinkedAccountDocument> acc = linkedAccountService.getPrimaryAccount(ownerUsername, coliveName);
+            return acc.isPresent() && acc.get().isRazorpaySynced() && acc.get().getRazorpayAccountId() != null;
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     public void notifyPaymentInitiated(PaymentRequest request, Order order) {

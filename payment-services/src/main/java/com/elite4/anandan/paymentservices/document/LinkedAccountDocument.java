@@ -45,8 +45,12 @@ public class LinkedAccountDocument {
     // Document upload tracking (Phase 2 - KYC documents)
     private java.util.List<UploadedDocument> uploadedDocuments;
 
+    // Razorpay sync tracking
+    private boolean razorpaySynced;      // true = real Razorpay account, false = pending sync
+    private String syncFailureReason;    // reason if Razorpay API call failed
+
     private boolean primary;         // only one per ownerUsername+coliveName
-    private String status;           // CREATED, ACTIVE, SUSPENDED
+    private String status;           // CREATED, ACTIVE, SUSPENDED, PENDING_SYNC
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 

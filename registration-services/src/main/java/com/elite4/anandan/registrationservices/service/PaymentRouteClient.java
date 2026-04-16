@@ -89,14 +89,28 @@ public class PaymentRouteClient {
                 Map<String, Object> accountResponse = restTemplate.postForObject(
                         baseUrl + "/payments/route/linked-accounts", req, Map.class);
 
-                log.info("✅ Step 1 complete: Bank account {} synced to Route API for owner={}, colive={}, bank={}",
-                        (i + 1), ownerUsername, coliveName, bd.getBankName());
+                boolean razorpaySynced = accountResponse != null
+                        && Boolean.TRUE.equals(accountResponse.get("razorpaySynced"));
+
+                if (razorpaySynced) {
+                    log.info("✅ Step 1 complete: Bank account {} synced to Razorpay for owner={}, colive={}, bank={}",
+                            (i + 1), ownerUsername, coliveName, bd.getBankName());
+                } else {
+                    log.warn("⚠️ Step 1 partial: Bank account {} saved locally but Razorpay sync pending for owner={}, colive={}, bank={}",
+                            (i + 1), ownerUsername, coliveName, bd.getBankName());
+                }
 
                 // Extract account ID from the response for Step 2 & 3
                 String accountId = accountResponse != null ? (String) accountResponse.get("id") : null;
 
                 if (accountId == null || accountId.isBlank()) {
                     log.warn("⚠️ No account ID returned from Route API — skipping KYC submission for bank account {}", (i + 1));
+                    continue;
+                }
+
+                // Skip KYC and document upload if Razorpay sync is pending
+                if (!razorpaySynced) {
+                    log.info("⏭️ Skipping KYC/doc upload for bank account {} — Razorpay sync pending. Will be retried.", (i + 1));
                     continue;
                 }
 

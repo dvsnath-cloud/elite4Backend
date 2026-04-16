@@ -73,7 +73,18 @@ public class PaymentController {
             resp.setTenantName(request.getTenantName());
             resp.setPaymentFor(request.getPaymentFor());
             resp.setMessage("Order created successfully.");
-            log.info("POST /payments/order → 201 CREATED, orderId={}, receipt={}", resp.getOrderId(), resp.getReceipt());
+
+            // Route transfer info
+            boolean hasTransfer = paymentService.isRouteEnabled()
+                    && paymentService.hasLinkedAccount(request.getOwnerUsername(), request.getColiveName());
+            resp.setRouteTransferIncluded(hasTransfer);
+            if (hasTransfer) {
+                int platformFee = paymentService.getPlatformFee();
+                resp.setPlatformFeeAmount(platformFee);
+                resp.setOwnerSettlementAmount(request.getAmount() - platformFee);
+            }
+
+            log.info("POST /payments/order → 201 CREATED, orderId={}, receipt={}, routeTransfer={}", resp.getOrderId(), resp.getReceipt(), hasTransfer);
             return ResponseEntity.status(HttpStatus.CREATED).body(resp);
         } catch (Exception e) {
             log.error("POST /payments/order → FAILED: {}", e.getMessage(), e);

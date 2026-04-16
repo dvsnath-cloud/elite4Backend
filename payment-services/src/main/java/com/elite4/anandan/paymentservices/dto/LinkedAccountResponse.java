@@ -26,6 +26,10 @@ public class LinkedAccountResponse {
     private String panNumber;
     private String gstNumber;
 
+    // Razorpay sync status
+    private boolean razorpaySynced;
+    private String syncFailureReason;
+
     // Document upload status
     private java.util.List<String> uploadedDocumentTypes;
 }
