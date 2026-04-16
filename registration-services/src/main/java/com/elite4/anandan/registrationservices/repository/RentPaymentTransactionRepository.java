@@ -12,7 +12,7 @@ import java.util.List;
 import java.util.Optional;
 
 @Repository
-public interface RentPaymentTransactionRepository extends MongoRepository<RentPaymentTransaction, String> {
+public interface RentPaymentTransactionRepository extends MongoRepository<RentPaymentTransaction, String>, RentPaymentTransactionCustomRepository {
 
     /**
      * Find all payments for a specific tenant
@@ -154,4 +154,11 @@ public interface RentPaymentTransactionRepository extends MongoRepository<RentPa
      * Find all transactions for a specific rent month (for scheduler idempotency)
      */
     List<RentPaymentTransaction> findByRentMonth(LocalDate rentMonth);
+
+    /**
+     * Find distinct tenant IDs that already have records for a given month.
+     * Lightweight query for idempotency check (avoids loading full documents).
+     */
+    @Query(value = "{ 'rentMonth': ?0 }", fields = "{ 'tenantId': 1 }")
+    List<RentPaymentTransaction> findTenantIdsByRentMonth(LocalDate rentMonth);
 }

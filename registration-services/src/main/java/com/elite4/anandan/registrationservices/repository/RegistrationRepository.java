@@ -3,6 +3,8 @@ package com.elite4.anandan.registrationservices.repository;
 import com.elite4.anandan.registrationservices.document.RegistrationDocument;
 import com.elite4.anandan.registrationservices.dto.Registration;
 import com.elite4.anandan.registrationservices.dto.RegistrationWithRoomRequest;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.mongodb.repository.MongoRepository;
 import org.springframework.stereotype.Repository;
 
@@ -13,6 +15,7 @@ import java.util.Optional;
 public interface RegistrationRepository extends MongoRepository<RegistrationDocument, String> {
     Optional<RegistrationDocument> findByEmail(String email);
     Optional<RegistrationDocument> findByEmailAndOccupied(String email, Registration.roomOccupied occupied);
+
     Optional<RegistrationDocument> findByContactNo(String contactNo);
     List<RegistrationDocument> findAllByContactNo(String contactNo);
     Optional<RegistrationDocument> findByContactNoAndOccupied(String contactNo, Registration.roomOccupied occupied);
@@ -55,4 +58,10 @@ public interface RegistrationRepository extends MongoRepository<RegistrationDocu
             String coliveName,
             String coliveUserName,
             String houseNumber);
+
+    // Paginated query for occupied tenants (for scheduler batch processing)
+    Page<RegistrationDocument> findByOccupied(Registration.roomOccupied occupied, Pageable pageable);
+
+    // Count active tenants (for progress logging)
+    long countByOccupied(Registration.roomOccupied occupied);
 }

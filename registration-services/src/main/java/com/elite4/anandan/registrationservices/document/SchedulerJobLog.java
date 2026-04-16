@@ -60,8 +60,12 @@ public class SchedulerJobLog {
     // ── Per-colive breakdown ──
     private List<ColiveJobDetail> coliveDetails;
 
-    // ── Per-tenant detail log ──
+    // ── Per-tenant detail log (stored in separate 'schedulerTenantDetails' collection) ──
+    // Kept for backward compatibility with small runs; null for large batches.
     private List<TenantJobDetail> tenantDetails;
+
+    // Total tenant details stored in schedulerTenantDetails collection (for large runs)
+    private long tenantDetailsCount;
 
     // ─────────────────────────── Enums ────────────────────────────
 
