@@ -3,9 +3,9 @@ package com.elite4.anandan.paymentservices.controller;
 import com.elite4.anandan.paymentservices.dto.PaymentRequest;
 import com.elite4.anandan.paymentservices.dto.PaymentResponse;
 import com.elite4.anandan.paymentservices.service.PaymentService;
-import com.razorpay.Order;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.json.JSONObject;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CrossOrigin;
@@ -55,20 +55,20 @@ public class PaymentController {
                 return ResponseEntity.badRequest().body(Map.of("message", "Amount must be greater than zero."));
             }
 
-            Order order = paymentService.createOrder(request);
+            JSONObject order = paymentService.createOrder(request);
             log.info("POST /payments/order → Razorpay order created: id={}, amount={}, status={}",
-                    order.get("id"), order.get("amount"), order.get("status"));
+                    order.optString("id"), order.optInt("amount"), order.optString("status"));
 
             //paymentService.notifyPaymentInitiated(request, order);
 
             PaymentResponse resp = new PaymentResponse();
-            resp.setOrderId(objectToString(order.get("id")));
-            resp.setAmount(objectToInteger(order.get("amount")));
-            resp.setCurrency(objectToString(order.get("currency")));
-            resp.setStatus(objectToString(order.get("status")));
+            resp.setOrderId(order.optString("id"));
+            resp.setAmount(order.optInt("amount"));
+            resp.setCurrency(order.optString("currency"));
+            resp.setStatus(order.optString("status"));
             resp.setKeyId(paymentService.getKeyId());
             resp.setCompanyName(paymentService.getCompanyName());
-            resp.setReceipt(objectToString(order.get("receipt")));
+            resp.setReceipt(order.optString("receipt"));
             resp.setRegistrationId(request.getRegistrationId());
             resp.setTenantName(request.getTenantName());
             resp.setPaymentFor(request.getPaymentFor());

@@ -6,12 +6,13 @@ import com.elite4.anandan.paymentservices.dto.TransferRequest;
 import com.elite4.anandan.paymentservices.dto.TransferResponse;
 import com.elite4.anandan.paymentservices.repository.LinkedAccountRepository;
 import com.elite4.anandan.paymentservices.repository.PaymentTransferRepository;
-import com.razorpay.RazorpayClient;
-import com.razorpay.Transfer;
 import lombok.extern.slf4j.Slf4j;
+import org.json.JSONArray;
 import org.json.JSONObject;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.*;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestTemplate;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -21,24 +22,34 @@ import java.util.Optional;
 @Service
 public class RouteService {
 
-    private final RazorpayClient razorpayClient;
+    private final RazorpayOAuthTokenProvider tokenProvider;
+    private final RestTemplate restTemplate;
     private final PaymentTransferRepository transferRepository;
     private final LinkedAccountRepository linkedAccountRepository;
+    private final String keyId;
+    private final String keySecret;
     private final int platformFee;
     private final boolean routeEnabled;
+
+    private static final String RAZORPAY_BASE_URL = "https://api.razorpay.com";
 
     public RouteService(@Value("${razorpay.keyId}") String keyId,
                         @Value("${razorpay.keySecret}") String keySecret,
                         @Value("${razorpay.platformFee:4900}") int platformFee,
                         @Value("${razorpay.routeEnabled:true}") boolean routeEnabled,
                         PaymentTransferRepository transferRepository,
-                        LinkedAccountRepository linkedAccountRepository) throws Exception {
-        this.razorpayClient = new RazorpayClient(keyId, keySecret);
+                        LinkedAccountRepository linkedAccountRepository,
+                        RazorpayOAuthTokenProvider tokenProvider,
+                        RestTemplate restTemplate) {
+        this.keyId = keyId;
+        this.keySecret = keySecret;
+        this.tokenProvider = tokenProvider;
+        this.restTemplate = restTemplate;
         this.transferRepository = transferRepository;
         this.linkedAccountRepository = linkedAccountRepository;
         this.platformFee = platformFee;
         this.routeEnabled = routeEnabled;
-        log.info("RouteService initialized: platformFee={}paise (₹{}), routeEnabled={}",
+        log.info("RouteService initialized with OAuth: platformFee={}paise (₹{}), routeEnabled={}",
                 platformFee, platformFee / 100.0, routeEnabled);
     }
 
@@ -135,13 +146,27 @@ public class RouteService {
             log.info("Razorpay API → POST /v1/payments/{}/transfers, payload={}",
                     razorpayPaymentId, transferRequest);
 
-            // Execute transfer via Razorpay SDK
-            List<Transfer> transfers = razorpayClient.payments.transfer(razorpayPaymentId, transferRequest);
-            Transfer transfer = transfers.get(0);
-            String razorpayTransferId = transfer.get("id").toString();
+            // Execute transfer via OAuth REST call
+            HttpHeaders headers = tokenProvider.createAuthHeaders(keyId, keySecret);
+            headers.setContentType(MediaType.APPLICATION_JSON);
+
+            JSONObject transferBody = new JSONObject();
+            JSONArray transfersArray = new JSONArray();
+            transfersArray.put(transferRequest);
+            transferBody.put("transfers", transfersArray);
+
+            HttpEntity<String> entity = new HttpEntity<>(transferBody.toString(), headers);
+            ResponseEntity<String> response = restTemplate.exchange(
+                    RAZORPAY_BASE_URL + "/v1/payments/" + razorpayPaymentId + "/transfers",
+                    HttpMethod.POST, entity, String.class);
+
+            JSONObject responseBody = new JSONObject(response.getBody());
+            JSONArray items = responseBody.optJSONArray("items");
+            JSONObject transfer = (items != null && items.length() > 0) ? items.getJSONObject(0) : responseBody;
+            String razorpayTransferId = transfer.getString("id");
 
             log.info("Razorpay transfer created: transferId={}, amount={}, status={}",
-                    razorpayTransferId, transfer.get("amount"), transfer.get("status"));
+                    razorpayTransferId, transfer.optInt("amount"), transfer.optString("status"));
 
             // Save transfer document
             PaymentTransferDocument doc = createTransferDocument(

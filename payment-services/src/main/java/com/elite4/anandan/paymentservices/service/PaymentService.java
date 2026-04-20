@@ -2,8 +2,6 @@ package com.elite4.anandan.paymentservices.service;
 
 import com.elite4.anandan.paymentservices.document.LinkedAccountDocument;
 import com.elite4.anandan.paymentservices.dto.PaymentRequest;
-import com.razorpay.Order;
-import com.razorpay.RazorpayClient;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
@@ -14,13 +12,16 @@ import lombok.extern.slf4j.Slf4j;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.*;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestTemplate;
 
 @Slf4j
 @Service
 public class PaymentService {
 
-    private final RazorpayClient razorpayClient;
+    private final RazorpayOAuthTokenProvider tokenProvider;
+    private final RestTemplate restTemplate;
     private final NotificationClient notificationClient;
     private final LinkedAccountService linkedAccountService;
     private final String keyId;
@@ -29,26 +30,31 @@ public class PaymentService {
     private final int platformFee;
     private final boolean routeEnabled;
 
+    private static final String RAZORPAY_BASE_URL = "https://api.razorpay.com";
+
     public PaymentService(@Value("${razorpay.keyId}") String keyId,
                           @Value("${razorpay.keySecret}") String keySecret,
                           @Value("${razorpay.companyName:CoLive Connect}") String companyName,
                           @Value("${razorpay.platformFee:4900}") int platformFee,
                           @Value("${razorpay.routeEnabled:true}") boolean routeEnabled,
                           NotificationClient notificationClient,
-                          LinkedAccountService linkedAccountService) throws Exception {
-        log.info("Initializing Razorpay client with keyId={}, routeEnabled={}, platformFee={}", keyId, routeEnabled, platformFee);
-        this.razorpayClient = new RazorpayClient(keyId, keySecret);
+                          LinkedAccountService linkedAccountService,
+                          RazorpayOAuthTokenProvider tokenProvider,
+                          RestTemplate restTemplate) {
+        log.info("Initializing PaymentService with keyId={}, routeEnabled={}, platformFee={}", keyId, routeEnabled, platformFee);
         this.notificationClient = notificationClient;
         this.linkedAccountService = linkedAccountService;
+        this.tokenProvider = tokenProvider;
+        this.restTemplate = restTemplate;
         this.keyId = keyId;
         this.keySecret = keySecret;
         this.companyName = companyName;
         this.platformFee = platformFee;
         this.routeEnabled = routeEnabled;
-        log.info("Razorpay client initialized successfully, companyName={}", companyName);
+        log.info("PaymentService initialized successfully with OAuth, companyName={}", companyName);
     }
 
-    public Order createOrder(PaymentRequest request) throws Exception {
+    public JSONObject createOrder(PaymentRequest request) throws Exception {
         JSONObject options = new JSONObject();
         options.put("amount", request.getAmount());
         options.put("currency", request.getCurrency() == null || request.getCurrency().isBlank() ? "INR" : request.getCurrency());
@@ -105,11 +111,21 @@ public class PaymentService {
             }
         }
 
-        log.info("Razorpay API → POST https://api.razorpay.com/v1/orders, payload={}", options);
-        Order order = razorpayClient.orders.create(options);
+        log.info("Razorpay API → POST {}/v1/orders, payload={}", RAZORPAY_BASE_URL, options);
+
+        HttpHeaders headers = tokenProvider.createAuthHeaders(keyId, keySecret);
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        HttpEntity<String> entity = new HttpEntity<>(options.toString(), headers);
+
+        ResponseEntity<String> response = restTemplate.exchange(
+                RAZORPAY_BASE_URL + "/v1/orders", HttpMethod.POST, entity, String.class);
+
+        JSONObject orderResponse = new JSONObject(response.getBody());
         log.info("Razorpay API → response: id={}, amount={}, currency={}, status={}, receipt={}",
-                order.get("id"), order.get("amount"), order.get("currency"), order.get("status"), order.get("receipt"));
-        return order;
+                orderResponse.optString("id"), orderResponse.optInt("amount"),
+                orderResponse.optString("currency"), orderResponse.optString("status"),
+                orderResponse.optString("receipt"));
+        return orderResponse;
     }
 
     public boolean verifySignature(String razorpayOrderId, String razorpayPaymentId, String razorpaySignature) throws Exception {
@@ -156,16 +172,16 @@ public class PaymentService {
         }
     }
 
-    public void notifyPaymentInitiated(PaymentRequest request, Order order) {
+    public void notifyPaymentInitiated(PaymentRequest request, JSONObject order) {
         log.info("Notifying payment initiated: orderId={}, tenantName={}, email={}, phone={}",
-                order.get("id"), request.getTenantName(), request.getEmail(), request.getPhoneNumber());
+                order.optString("id"), request.getTenantName(), request.getEmail(), request.getPhoneNumber());
         Map<String, Object> variables = new HashMap<>();
         variables.put("fname", defaultValue(request.getTenantName(), "Resident"));
-        variables.put("amount", order.get("amount"));
-        variables.put("orderId", order.get("id"));
+        variables.put("amount", order.optInt("amount"));
+        variables.put("orderId", order.optString("id"));
         variables.put("paymentFor", defaultValue(request.getPaymentFor(), "monthly_rent"));
 
-        String message = "Your payment order " + order.get("id") + " has been created for INR " + order.get("amount") + ".";
+        String message = "Your payment order " + order.optString("id") + " has been created for INR " + order.optInt("amount") + ".";
         if (request.getEmail() != null && !request.getEmail().isBlank()) {
             notificationClient.sendEmailWithTemplate(request.getEmail(), "Payment Initiated", "payment-success", variables);
         }

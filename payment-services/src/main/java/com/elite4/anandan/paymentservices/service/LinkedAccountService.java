@@ -5,7 +5,6 @@ import com.elite4.anandan.paymentservices.dto.KycSubmissionRequest;
 import com.elite4.anandan.paymentservices.dto.LinkedAccountRequest;
 import com.elite4.anandan.paymentservices.dto.LinkedAccountResponse;
 import com.elite4.anandan.paymentservices.repository.LinkedAccountRepository;
-import com.razorpay.RazorpayClient;
 import lombok.extern.slf4j.Slf4j;
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -17,9 +16,7 @@ import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
-import java.util.Base64;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -28,9 +25,9 @@ import java.util.stream.Collectors;
 @Service
 public class LinkedAccountService {
 
-    private final RazorpayClient razorpayClient;
     private final LinkedAccountRepository linkedAccountRepository;
     private final RestTemplate restTemplate;
+    private final RazorpayOAuthTokenProvider tokenProvider;
     private final String keyId;
     private final String keySecret;
 
@@ -39,10 +36,11 @@ public class LinkedAccountService {
     public LinkedAccountService(@Value("${razorpay.keyId}") String keyId,
                                 @Value("${razorpay.keySecret}") String keySecret,
                                 LinkedAccountRepository linkedAccountRepository,
-                                RestTemplate restTemplate) throws Exception {
-        this.razorpayClient = new RazorpayClient(keyId, keySecret);
+                                RestTemplate restTemplate,
+                                RazorpayOAuthTokenProvider tokenProvider) {
         this.linkedAccountRepository = linkedAccountRepository;
         this.restTemplate = restTemplate;
+        this.tokenProvider = tokenProvider;
         this.keyId = keyId;
         this.keySecret = keySecret;
     }
@@ -772,11 +770,7 @@ public class LinkedAccountService {
     }
 
     private HttpHeaders createAuthHeaders() {
-        HttpHeaders headers = new HttpHeaders();
-        String auth = keyId + ":" + keySecret;
-        String encodedAuth = Base64.getEncoder().encodeToString(auth.getBytes(StandardCharsets.UTF_8));
-        headers.set("Authorization", "Basic " + encodedAuth);
-        return headers;
+        return tokenProvider.createAuthHeaders(keyId, keySecret);
     }
 
     private String maskAccount(String accountNumber) {

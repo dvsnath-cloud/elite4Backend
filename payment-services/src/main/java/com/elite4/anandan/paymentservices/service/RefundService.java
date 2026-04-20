@@ -6,12 +6,12 @@ import com.elite4.anandan.paymentservices.dto.RefundRequest;
 import com.elite4.anandan.paymentservices.dto.RefundResponse;
 import com.elite4.anandan.paymentservices.repository.PaymentRefundRepository;
 import com.elite4.anandan.paymentservices.repository.PaymentTransferRepository;
-import com.razorpay.RazorpayClient;
-import com.razorpay.Refund;
 import lombok.extern.slf4j.Slf4j;
 import org.json.JSONObject;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.*;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestTemplate;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -21,20 +21,30 @@ import java.util.Optional;
 @Service
 public class RefundService {
 
-    private final RazorpayClient razorpayClient;
+    private final RazorpayOAuthTokenProvider tokenProvider;
+    private final RestTemplate restTemplate;
     private final PaymentRefundRepository refundRepository;
     private final PaymentTransferRepository transferRepository;
     private final NotificationClient notificationClient;
+    private final String keyId;
+    private final String keySecret;
+
+    private static final String RAZORPAY_BASE_URL = "https://api.razorpay.com";
 
     public RefundService(@Value("${razorpay.keyId}") String keyId,
                          @Value("${razorpay.keySecret}") String keySecret,
                          PaymentRefundRepository refundRepository,
                          PaymentTransferRepository transferRepository,
-                         NotificationClient notificationClient) throws Exception {
-        this.razorpayClient = new RazorpayClient(keyId, keySecret);
+                         NotificationClient notificationClient,
+                         RazorpayOAuthTokenProvider tokenProvider,
+                         RestTemplate restTemplate) {
+        this.keyId = keyId;
+        this.keySecret = keySecret;
         this.refundRepository = refundRepository;
         this.transferRepository = transferRepository;
         this.notificationClient = notificationClient;
+        this.tokenProvider = tokenProvider;
+        this.restTemplate = restTemplate;
     }
 
     public RefundResponse initiateRefund(RefundRequest request) {
@@ -63,11 +73,18 @@ public class RefundService {
 
             log.info("Razorpay API → POST /v1/payments/{}/refund, payload={}", paymentId, refundReq);
 
-            // Execute refund
-            Refund refund = razorpayClient.payments.refund(paymentId, refundReq);
+            // Execute refund via OAuth REST call
+            HttpHeaders headers = tokenProvider.createAuthHeaders(keyId, keySecret);
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            HttpEntity<String> entity = new HttpEntity<>(refundReq.toString(), headers);
 
-            String razorpayRefundId = refund.get("id").toString();
-            int refundAmount = refund.has("amount") ? Integer.parseInt(refund.get("amount").toString()) : request.getAmount();
+            ResponseEntity<String> response = restTemplate.exchange(
+                    RAZORPAY_BASE_URL + "/v1/payments/" + paymentId + "/refund",
+                    HttpMethod.POST, entity, String.class);
+
+            JSONObject refund = new JSONObject(response.getBody());
+            String razorpayRefundId = refund.getString("id");
+            int refundAmount = refund.optInt("amount", request.getAmount());
 
             log.info("Razorpay refund created: refundId={}, amount={}", razorpayRefundId, refundAmount);
 

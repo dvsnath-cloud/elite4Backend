@@ -34,8 +34,8 @@ public class RegistrationController {
     public ResponseEntity<RegistrationWithRoomRequest> create(
             @RequestParam String registration,
             @RequestParam String room,
-            @RequestParam(required = true) MultipartFile aadharPhoto,
-            @RequestParam(required = true) MultipartFile documentUpload) throws IOException {
+            @RequestParam(required = false) MultipartFile aadharPhoto,
+            @RequestParam(required = false) MultipartFile documentUpload) throws IOException {
 
         // Parse JSON strings to objects
         Registration registrationDto = objectMapper.readValue(registration, Registration.class);
