@@ -420,6 +420,26 @@ public class UserController {
         return ResponseEntity.ok(adminService.searchColiveProperties(search));
     }
 
+    @GetMapping("/admin/property-access")
+    @PreAuthorize("hasAnyRole('ADMIN','MODERATOR')")
+    public ResponseEntity<List<PropertyAccessAssignmentResponse>> getPropertyAccessAssignments(
+            @RequestParam String ownerUsername,
+            @RequestParam String coliveName) {
+        return ResponseEntity.ok(adminService.getPropertyAccessAssignments(ownerUsername, coliveName));
+    }
+
+    @PutMapping("/admin/property-access")
+    @PreAuthorize("hasAnyRole('ADMIN','MODERATOR')")
+    public ResponseEntity<?> upsertPropertyAccess(@Valid @RequestBody PropertyAccessAssignmentRequest request) {
+        return adminService.upsertPropertyAccess(request);
+    }
+
+    @DeleteMapping("/admin/property-access")
+    @PreAuthorize("hasAnyRole('ADMIN','MODERATOR')")
+    public ResponseEntity<?> removePropertyAccess(@Valid @RequestBody PropertyAccessAssignmentRequest request) {
+        return adminService.removePropertyAccess(request);
+    }
+
     @GetMapping("/admin/user/{username}")
     @PreAuthorize("hasAnyRole('USER','ADMIN','MODERATOR')")
     public ResponseEntity<?> getUserByUsername(@PathVariable String username) {

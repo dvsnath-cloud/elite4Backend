@@ -1,12 +1,12 @@
 package com.elite4.anandan.registrationservices.dto;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
-import com.fasterxml.jackson.annotation.JsonInclude;
 
 import java.util.List;
 import java.util.Set;
@@ -17,6 +17,8 @@ public class ColiveNameAndRooms {
     @NotBlank(message = "CoLive name is required")
     private String coliveName;
 
+    private String ownerUsername;
+    private String accessRole;
     private List<String> uploadedPhotos;
 
     @NotNull(message = "CategoryType is required")

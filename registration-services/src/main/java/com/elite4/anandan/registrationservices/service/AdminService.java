@@ -1,27 +1,33 @@
 package com.elite4.anandan.registrationservices.service;
 
 import com.elite4.anandan.registrationservices.document.RoomOnBoardDocument;
+import com.elite4.anandan.registrationservices.dto.BankDetails;
 import com.elite4.anandan.registrationservices.dto.ClientAndRoomOnBoardId;
-import com.elite4.anandan.registrationservices.dto.UserResponse;
 import com.elite4.anandan.registrationservices.dto.ColiveListItem;
 import com.elite4.anandan.registrationservices.dto.ColiveNameAndRooms;
+import com.elite4.anandan.registrationservices.dto.PropertyAccessAssignmentRequest;
+import com.elite4.anandan.registrationservices.dto.PropertyAccessAssignmentResponse;
 import com.elite4.anandan.registrationservices.dto.Room;
-import com.elite4.anandan.registrationservices.dto.BankDetails;
 import com.elite4.anandan.registrationservices.dto.UpdateColiveBankDetailsRequest;
+import com.elite4.anandan.registrationservices.dto.UserResponse;
+import com.elite4.anandan.registrationservices.model.EmployeeRole;
+import com.elite4.anandan.registrationservices.model.Role;
 import com.elite4.anandan.registrationservices.model.User;
 import com.elite4.anandan.registrationservices.repository.RoleRepository;
-import com.elite4.anandan.registrationservices.repository.UserRepository;
 import com.elite4.anandan.registrationservices.repository.RoomsOrHouseRepository;
+import com.elite4.anandan.registrationservices.repository.UserRepository;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
-import lombok.extern.slf4j.Slf4j;
 
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -29,6 +35,9 @@ import java.util.stream.Collectors;
 @Service
 @Slf4j
 public class AdminService {
+
+    private static final String PROPERTY_ROLE_MODERATOR = "ROLE_MODERATOR";
+    private static final String PROPERTY_ROLE_USER = "ROLE_USER";
 
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
@@ -79,7 +88,6 @@ public class AdminService {
         users.addAll(userRepository.findByEmailContainingIgnoreCaseAndActiveTrue(searchTerm.trim()));
         users.addAll(userRepository.findByPhoneE164ContainingIgnoreCaseAndActiveTrue(searchTerm.trim()));
 
-        // Remove duplicates
         Set<User> uniqueUsers = new LinkedHashSet<>(users);
 
         return uniqueUsers.stream()
@@ -102,10 +110,9 @@ public class AdminService {
         }
 
         user.setActive(true);
-        user.setUpdatedAt(java.time.Instant.now());
+        user.setUpdatedAt(Instant.now());
         userRepository.save(user);
 
-        // --- Notification logic: Approval ---
         try {
             String propertyNames = user.getClientDetails() != null
                     ? user.getClientDetails().stream().map(ClientAndRoomOnBoardId::getColiveName).collect(Collectors.joining(", "))
@@ -139,14 +146,13 @@ public class AdminService {
         if (user.isActive()) {
             return ResponseEntity.badRequest().body("Cannot reject an active user");
         }
-        if(user.getRoleIds() != null) {
+        if (user.getRoleIds() != null) {
             user.getRoleIds().forEach(roleId -> {
                 if (roleRepository.existsById(roleId)) {
                     roleRepository.deleteById(roleId);
                 }
             });
         }
-        // --- Notification logic: Rejection ---
         try {
             String subject = "CoLive Connect - Registration Rejected";
             String message = "Dear " + (user.getUsername() != null ? user.getUsername() : "User") + ", your CoLive Connect registration has been reviewed and rejected. Please contact support for more information.";
@@ -180,10 +186,9 @@ public class AdminService {
         }
 
         user.setActive(false);
-        user.setUpdatedAt(java.time.Instant.now());
+        user.setUpdatedAt(Instant.now());
         userRepository.save(user);
 
-        // --- Notification logic: Deactivation ---
         try {
             String subject = "CoLive Connect - Account Deactivated";
             String message = "Dear " + (user.getUsername() != null ? user.getUsername() : "User") + ", your CoLive Connect account has been deactivated. Please contact the admin if you believe this is an error.";
@@ -221,98 +226,118 @@ public class AdminService {
         response.setUpdatedAt(user.getUpdatedAt());
         response.setLastLoginAt(user.getLastLoginAt());
         response.setOwnerOfClient(user.getOwnerOfClient());
-        response.setClientDetails(user.getClientDetails());
         response.setPhoneNumber(user.getPhoneRaw());
         response.setPhoneNumberE164(user.getPhoneE164());
-        
-        // Fetch and populate rooms from clientDetails
+
         Set<String> rooms = new LinkedHashSet<>();
         Set<ColiveNameAndRooms> coliveNameAndRoomsSet = new LinkedHashSet<>();
+        Set<ClientAndRoomOnBoardId> normalizedClientDetails = new LinkedHashSet<>();
         if (user.getClientDetails() != null && !user.getClientDetails().isEmpty()) {
             for (ClientAndRoomOnBoardId clientDetail : user.getClientDetails()) {
-                ColiveNameAndRooms coliveNameAndRooms = new ColiveNameAndRooms();
-                coliveNameAndRooms.setColiveName(clientDetail.getColiveName());
-                Set<Room> roomNumbers = new LinkedHashSet<>();
-
-                String roomOnBoardId = clientDetail.getRoomOnBoardId();
-                if (roomOnBoardId != null && !roomOnBoardId.trim().isEmpty()) {
-                    Optional<RoomOnBoardDocument> roomOnBoard = roomsOrHouseRepository.findById(roomOnBoardId);
-                    if (roomOnBoard.isPresent()) {
-                        Set<Room> roomSet = roomOnBoard.get().getRooms();
-                        if (roomSet != null && !roomSet.isEmpty()) {
-                            roomNumbers.addAll(roomSet);
-                            for (Room room : roomSet) {
-                                if (room.getRoomNumber() != null) {
-                                    rooms.add(room.getRoomNumber());
-                                }
-                            }
-                        }
-                    }
-                }
-
-                coliveNameAndRooms.setRooms(roomNumbers);
-                String category = clientDetail.getClientCategory();
-                if (category != null) {
-                    coliveNameAndRooms.setCategoryType(ColiveNameAndRooms.categoryValues.valueOf(category));
-                }
-                coliveNameAndRooms.setBankDetailsList(clientDetail.getBankDetailsList());
-                // Map license documents and photos from entity to DTO
-                coliveNameAndRooms.setLicenseDocumentsPath(clientDetail.getLicenseDocumentsPath());
-                coliveNameAndRooms.setUploadedPhotos(clientDetail.getUploadedPhotos());
-                coliveNameAndRoomsSet.add(coliveNameAndRooms);
+                normalizedClientDetails.add(copyPropertyAssignment(user, clientDetail, resolveAccessRole(user, clientDetail)));
+                coliveNameAndRoomsSet.add(toColiveNameAndRooms(user, clientDetail, rooms));
             }
         }
+        response.setClientDetails(normalizedClientDetails);
         response.setRooms(rooms);
         response.setClientNameAndRooms(coliveNameAndRoomsSet);
-        
-        // Fetch and populate roleNames
+
         List<String> roleNames = new ArrayList<>();
         if (user.getRoleIds() != null && !user.getRoleIds().isEmpty()) {
             for (String roleId : user.getRoleIds()) {
-                if (roleRepository.existsById(roleId)) {
-                    roleRepository.findById(roleId).ifPresent(role -> {
-                        roleNames.add(role.getName().toString());
-                    });
-                }
+                roleRepository.findById(roleId).ifPresent(role -> roleNames.add(role.getName().toString()));
             }
         }
         response.setRoleNames(roleNames);
-        
+
         return response;
+    }
+
+    private ColiveNameAndRooms toColiveNameAndRooms(User user, ClientAndRoomOnBoardId clientDetail, Set<String> roomsAccumulator) {
+        ColiveNameAndRooms coliveNameAndRooms = new ColiveNameAndRooms();
+        coliveNameAndRooms.setColiveName(clientDetail.getColiveName());
+        coliveNameAndRooms.setOwnerUsername(resolveOwnerUsername(user, clientDetail));
+        coliveNameAndRooms.setAccessRole(resolveAccessRole(user, clientDetail));
+
+        Set<Room> roomNumbers = new LinkedHashSet<>();
+        String roomOnBoardId = clientDetail.getRoomOnBoardId();
+        if (roomOnBoardId != null && !roomOnBoardId.trim().isEmpty()) {
+            Optional<RoomOnBoardDocument> roomOnBoard = roomsOrHouseRepository.findById(roomOnBoardId);
+            if (roomOnBoard.isPresent()) {
+                Set<Room> roomSet = roomOnBoard.get().getRooms();
+                if (roomSet != null && !roomSet.isEmpty()) {
+                    roomNumbers.addAll(roomSet);
+                    for (Room room : roomSet) {
+                        if (room.getRoomNumber() != null) {
+                            roomsAccumulator.add(room.getRoomNumber());
+                        }
+                    }
+                }
+            }
+        }
+
+        coliveNameAndRooms.setRooms(roomNumbers);
+        String category = clientDetail.getClientCategory();
+        if (category != null) {
+            coliveNameAndRooms.setCategoryType(ColiveNameAndRooms.categoryValues.valueOf(category));
+        }
+        coliveNameAndRooms.setBankDetailsList(copyBankDetails(clientDetail.getBankDetailsList()));
+        coliveNameAndRooms.setPanNumber(clientDetail.getPanNumber());
+        coliveNameAndRooms.setGstNumber(clientDetail.getGstNumber());
+        coliveNameAndRooms.setLegalBusinessName(clientDetail.getLegalBusinessName());
+        coliveNameAndRooms.setBusinessType(clientDetail.getBusinessType());
+        coliveNameAndRooms.setBusinessAddress(clientDetail.getBusinessAddress());
+        coliveNameAndRooms.setDocumentType(clientDetail.getDocumentType());
+        coliveNameAndRooms.setDocumentNumber(clientDetail.getDocumentNumber());
+        coliveNameAndRooms.setLicenseDocumentsPath(copyStringList(clientDetail.getLicenseDocumentsPath()));
+        coliveNameAndRooms.setUploadedPhotos(copyStringList(clientDetail.getUploadedPhotos()));
+        return coliveNameAndRooms;
     }
 
     /**
      * Search for colive properties by name.
      */
     public List<ColiveListItem> searchColiveProperties(String search) {
-        List<User> users = userRepository.findAll();
+        String searchLower = search == null ? "" : search.toLowerCase().trim();
         List<ColiveListItem> items = new ArrayList<>();
-        String searchLower = search.toLowerCase();
-        for (User u : users) {
-            boolean matched = false;
-            // Match by username
-            if (u.getUsername() != null && u.getUsername().toLowerCase().contains(searchLower)) {
+        Set<String> seen = new LinkedHashSet<>();
+
+        for (User user : userRepository.findAll()) {
+            if (user.getClientDetails() == null || user.getClientDetails().isEmpty()) {
+                continue;
+            }
+
+            for (ClientAndRoomOnBoardId client : user.getClientDetails()) {
+                if (client.getColiveName() == null || client.getColiveName().isBlank()) {
+                    continue;
+                }
+
+                String ownerUsername = resolveOwnerUsername(user, client);
+                if (ownerUsername == null || ownerUsername.isBlank()) {
+                    continue;
+                }
+
+                boolean matchesSearch = searchLower.isBlank()
+                        || client.getColiveName().toLowerCase().contains(searchLower)
+                        || ownerUsername.toLowerCase().contains(searchLower)
+                        || (user.getUsername() != null && user.getUsername().toLowerCase().contains(searchLower));
+                if (!matchesSearch) {
+                    continue;
+                }
+
+                String key = ownerUsername + "::" + client.getColiveName();
+                if (!seen.add(key)) {
+                    continue;
+                }
+
                 ColiveListItem item = new ColiveListItem();
-                item.setColiveUserName(u.getUsername());
-                item.setColiveName(u.getUsername());
+                item.setColiveUserName(ownerUsername);
+                item.setColiveName(client.getColiveName());
                 item.setCategoryType("PROPERTY");
                 items.add(item);
-                matched = true;
-            }
-            // Match by colive property names in clientDetails
-            if (u.getClientDetails() != null) {
-                for (var client : u.getClientDetails()) {
-                    if (client.getColiveName() != null && client.getColiveName().toLowerCase().contains(searchLower)) {
-                        ColiveListItem item = new ColiveListItem();
-                        item.setColiveUserName(u.getUsername());
-                        item.setColiveName(client.getColiveName());
-                        item.setCategoryType("PROPERTY");
-                        items.add(item);
-                        matched = true;
-                    }
-                }
             }
         }
+
         return items;
     }
 
@@ -331,46 +356,16 @@ public class AdminService {
         Optional<User> user = userRepository.findByUsername(username);
         if (user.isPresent()) {
             User userData = user.get();
-            ColiveNameAndRooms result = new ColiveNameAndRooms();
-            result.setColiveName(coliveName);
-            
-            // Find the matching client detail for this colive
             if (userData.getClientDetails() != null && !userData.getClientDetails().isEmpty()) {
                 for (ClientAndRoomOnBoardId clientDetail : userData.getClientDetails()) {
                     if (coliveName.equals(clientDetail.getColiveName())) {
-                        // Set category type
-                        String category = clientDetail.getClientCategory();
-                        if (category != null) {
-                            result.setCategoryType(ColiveNameAndRooms.categoryValues.valueOf(category));
-                        }
-                        
-                        // Fetch and set rooms
-                        String roomOnBoardId = clientDetail.getRoomOnBoardId();
-                        if (roomOnBoardId != null && !roomOnBoardId.trim().isEmpty()) {
-                            Optional<RoomOnBoardDocument> roomOnBoard = roomsOrHouseRepository.findById(roomOnBoardId);
-                            if (roomOnBoard.isPresent()) {
-                                Set<Room> roomSet = roomOnBoard.get().getRooms();
-                                if (roomSet != null && !roomSet.isEmpty()) {
-                                    result.setRooms(roomSet);
-                                }
-                            }
-                        }
-                        
-                        // Set bank details
-                        result.setBankDetailsList(clientDetail.getBankDetailsList());
-                        
-                        // Set uploaded photos
-                        result.setUploadedPhotos(clientDetail.getUploadedPhotos());
-                        
-                        // Set license documents
-                        result.setLicenseDocumentsPath(clientDetail.getLicenseDocumentsPath());
-                        
-                        return result;
+                        return toColiveNameAndRooms(userData, clientDetail, new LinkedHashSet<>());
                     }
                 }
             }
-            
-            // If colive not found in client details, return with basic info
+
+            ColiveNameAndRooms result = new ColiveNameAndRooms();
+            result.setColiveName(coliveName);
             result.setCategoryType(ColiveNameAndRooms.categoryValues.FLAT);
             return result;
         }
@@ -383,6 +378,143 @@ public class AdminService {
     public UserResponse getUserWithRoles(String username) {
         Optional<User> user = userRepository.findByUsername(username);
         return user.map(this::toUserResponse).orElse(null);
+    }
+
+    public List<PropertyAccessAssignmentResponse> getPropertyAccessAssignments(String ownerUsername, String coliveName) {
+        if (ownerUsername == null || ownerUsername.isBlank() || coliveName == null || coliveName.isBlank()) {
+            return new ArrayList<>();
+        }
+
+        Optional<User> ownerOpt = userRepository.findByUsername(ownerUsername);
+        if (ownerOpt.isEmpty()) {
+            return new ArrayList<>();
+        }
+
+        User ownerUser = ownerOpt.get();
+        ClientAndRoomOnBoardId ownerAssignment = findPropertyAssignment(ownerUser, ownerUsername, coliveName);
+        if (ownerAssignment == null) {
+            return new ArrayList<>();
+        }
+
+        LinkedHashMap<String, PropertyAccessAssignmentResponse> assignments = new LinkedHashMap<>();
+        assignments.put(ownerUser.getUsername(), toPropertyAccessAssignment(ownerUser, ownerAssignment));
+
+        for (User user : userRepository.findAll()) {
+            if (user.getUsername() == null || Objects.equals(user.getUsername(), ownerUsername)) {
+                continue;
+            }
+            ClientAndRoomOnBoardId assignment = findPropertyAssignment(user, ownerUsername, coliveName);
+            if (assignment != null) {
+                assignments.put(user.getUsername(), toPropertyAccessAssignment(user, assignment));
+            }
+        }
+
+        return new ArrayList<>(assignments.values());
+    }
+
+    public ResponseEntity<?> upsertPropertyAccess(PropertyAccessAssignmentRequest request) {
+        if (request == null) {
+            return ResponseEntity.badRequest().body("Request body is required");
+        }
+        if (request.getOwnerUsername() == null || request.getOwnerUsername().isBlank()) {
+            return ResponseEntity.badRequest().body("ownerUsername is required");
+        }
+        if (request.getColiveName() == null || request.getColiveName().isBlank()) {
+            return ResponseEntity.badRequest().body("coliveName is required");
+        }
+        if (request.getTargetUsername() == null || request.getTargetUsername().isBlank()) {
+            return ResponseEntity.badRequest().body("targetUsername is required");
+        }
+
+        String normalizedRole = normalizeAccessRole(request.getAccessRole());
+        Optional<User> ownerOpt = userRepository.findByUsername(request.getOwnerUsername().trim());
+        if (ownerOpt.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+
+        User ownerUser = ownerOpt.get();
+        ClientAndRoomOnBoardId sourceAssignment = findPropertyAssignment(ownerUser, request.getOwnerUsername().trim(), request.getColiveName().trim());
+        if (sourceAssignment == null) {
+            return ResponseEntity.badRequest().body("Property '" + request.getColiveName() + "' not found for owner '" + request.getOwnerUsername() + "'");
+        }
+
+        Optional<User> targetOpt = userRepository.findByUsername(request.getTargetUsername().trim());
+        if (targetOpt.isEmpty()) {
+            return ResponseEntity.badRequest().body("Target user '" + request.getTargetUsername() + "' not found");
+        }
+
+        User targetUser = targetOpt.get();
+        boolean ownerAssignment = Objects.equals(targetUser.getUsername(), ownerUser.getUsername());
+        if (ownerAssignment && !PROPERTY_ROLE_MODERATOR.equals(normalizedRole)) {
+            return ResponseEntity.badRequest().body("Original owner must remain a moderator for this property");
+        }
+
+        Set<ClientAndRoomOnBoardId> updatedAssignments = targetUser.getClientDetails() != null
+                ? new LinkedHashSet<>(targetUser.getClientDetails())
+                : new LinkedHashSet<>();
+
+        ClientAndRoomOnBoardId existingAssignment = findPropertyAssignment(targetUser, request.getOwnerUsername().trim(), request.getColiveName().trim());
+        if (existingAssignment != null) {
+            updatedAssignments.remove(existingAssignment);
+        }
+
+        updatedAssignments.add(copyPropertyAssignment(ownerUser, sourceAssignment, normalizedRole));
+        targetUser.setClientDetails(updatedAssignments);
+        targetUser.setUpdatedAt(Instant.now());
+        reconcilePropertyScopedRoles(targetUser);
+
+        User savedUser = userRepository.save(targetUser);
+        ClientAndRoomOnBoardId savedAssignment = findPropertyAssignment(savedUser, request.getOwnerUsername().trim(), request.getColiveName().trim());
+        return ResponseEntity.ok(toPropertyAccessAssignment(savedUser, savedAssignment));
+    }
+
+    public ResponseEntity<?> removePropertyAccess(PropertyAccessAssignmentRequest request) {
+        if (request == null) {
+            return ResponseEntity.badRequest().body("Request body is required");
+        }
+        if (request.getOwnerUsername() == null || request.getOwnerUsername().isBlank()) {
+            return ResponseEntity.badRequest().body("ownerUsername is required");
+        }
+        if (request.getColiveName() == null || request.getColiveName().isBlank()) {
+            return ResponseEntity.badRequest().body("coliveName is required");
+        }
+        if (request.getTargetUsername() == null || request.getTargetUsername().isBlank()) {
+            return ResponseEntity.badRequest().body("targetUsername is required");
+        }
+
+        if (Objects.equals(request.getOwnerUsername().trim(), request.getTargetUsername().trim())) {
+            return ResponseEntity.badRequest().body("Original owner access cannot be removed from their property");
+        }
+
+        Optional<User> targetOpt = userRepository.findByUsername(request.getTargetUsername().trim());
+        if (targetOpt.isEmpty()) {
+            return ResponseEntity.badRequest().body("Target user '" + request.getTargetUsername() + "' not found");
+        }
+
+        User targetUser = targetOpt.get();
+        if (targetUser.getClientDetails() == null || targetUser.getClientDetails().isEmpty()) {
+            return ResponseEntity.badRequest().body("User does not have any properties assigned");
+        }
+
+        boolean removedAny = false;
+        Set<ClientAndRoomOnBoardId> updatedAssignments = new LinkedHashSet<>();
+        for (ClientAndRoomOnBoardId clientDetail : targetUser.getClientDetails()) {
+            if (isMatchingPropertyAssignment(targetUser, clientDetail, request.getOwnerUsername().trim(), request.getColiveName().trim())) {
+                removedAny = true;
+                continue;
+            }
+            updatedAssignments.add(clientDetail);
+        }
+
+        if (!removedAny) {
+            return ResponseEntity.badRequest().body("Property assignment not found for target user");
+        }
+
+        targetUser.setClientDetails(updatedAssignments);
+        targetUser.setUpdatedAt(Instant.now());
+        reconcilePropertyScopedRoles(targetUser);
+        userRepository.save(targetUser);
+        return ResponseEntity.noContent().build();
     }
 
     public ResponseEntity<?> addBankDetailsToColive(String username, String coliveName,
@@ -458,7 +590,6 @@ public class AdminService {
         user.setUpdatedAt(Instant.now());
         User saved = userRepository.save(user);
 
-        // --- Notification logic: Property Added / Bank Details Updated ---
         try {
             String subject = "Bank Details Updated - CoLive Connect";
             String message = "Dear " + (user.getUsername() != null ? user.getUsername() : "User") + ", bank details for property '" + coliveName + "' have been successfully updated on your CoLive Connect account.";
@@ -474,5 +605,148 @@ public class AdminService {
         }
 
         return ResponseEntity.ok(toUserResponse(saved));
+    }
+
+    private boolean isMatchingPropertyAssignment(User user, ClientAndRoomOnBoardId clientDetail, String ownerUsername, String coliveName) {
+        return Objects.equals(resolveOwnerUsername(user, clientDetail), ownerUsername)
+                && Objects.equals(clientDetail.getColiveName(), coliveName);
+    }
+
+    private ClientAndRoomOnBoardId findPropertyAssignment(User user, String ownerUsername, String coliveName) {
+        if (user == null || user.getClientDetails() == null || user.getClientDetails().isEmpty()) {
+            return null;
+        }
+        for (ClientAndRoomOnBoardId clientDetail : user.getClientDetails()) {
+            if (isMatchingPropertyAssignment(user, clientDetail, ownerUsername, coliveName)) {
+                return clientDetail;
+            }
+        }
+        return null;
+    }
+
+    private PropertyAccessAssignmentResponse toPropertyAccessAssignment(User user, ClientAndRoomOnBoardId assignment) {
+        if (user == null || assignment == null) {
+            return null;
+        }
+        String ownerUsername = resolveOwnerUsername(user, assignment);
+        boolean ownerAssignment = Objects.equals(ownerUsername, user.getUsername());
+        return new PropertyAccessAssignmentResponse(
+                ownerUsername + "::" + assignment.getColiveName() + "::" + user.getUsername(),
+                user.getUsername(),
+                user.getUsername(),
+                user.getEmail(),
+                user.getPhoneRaw(),
+                user.isActive(),
+                ownerUsername,
+                assignment.getColiveName(),
+                resolveAccessRole(user, assignment),
+                ownerAssignment
+        );
+    }
+
+    private ClientAndRoomOnBoardId copyPropertyAssignment(User ownerUser, ClientAndRoomOnBoardId source, String accessRole) {
+        ClientAndRoomOnBoardId copy = new ClientAndRoomOnBoardId();
+        copy.setColiveName(source.getColiveName());
+        copy.setRoomOnBoardId(source.getRoomOnBoardId());
+        copy.setClientCategory(source.getClientCategory());
+        copy.setOwnerUsername(resolveOwnerUsername(ownerUser, source));
+        copy.setAccessRole(normalizeAccessRole(accessRole));
+        copy.setBankDetailsList(copyBankDetails(source.getBankDetailsList()));
+        copy.setPanNumber(source.getPanNumber());
+        copy.setGstNumber(source.getGstNumber());
+        copy.setLegalBusinessName(source.getLegalBusinessName());
+        copy.setBusinessType(source.getBusinessType());
+        copy.setBusinessAddress(source.getBusinessAddress());
+        copy.setLicenseDocumentsPath(copyStringList(source.getLicenseDocumentsPath()));
+        copy.setDocumentType(source.getDocumentType());
+        copy.setDocumentNumber(source.getDocumentNumber());
+        copy.setUploadedPhotos(copyStringList(source.getUploadedPhotos()));
+        copy.setAadharPhotoPath(source.getAadharPhotoPath());
+        copy.setDocumentUploadPath(source.getDocumentUploadPath());
+        return copy;
+    }
+
+    private List<String> copyStringList(List<String> values) {
+        return values == null ? null : new ArrayList<>(values);
+    }
+
+    private List<BankDetails> copyBankDetails(List<BankDetails> bankDetailsList) {
+        if (bankDetailsList == null) {
+            return null;
+        }
+
+        List<BankDetails> copied = new ArrayList<>();
+        for (BankDetails bankDetails : bankDetailsList) {
+            copied.add(new BankDetails(
+                    bankDetails.getAccountHolderName(),
+                    bankDetails.getAccountNumber(),
+                    bankDetails.getBankName(),
+                    bankDetails.getBranchCode(),
+                    bankDetails.getIfscCode(),
+                    bankDetails.getBranchAddress(),
+                    bankDetails.getUpiId()
+            ));
+        }
+        return copied;
+    }
+
+    private String resolveOwnerUsername(User user, ClientAndRoomOnBoardId clientDetail) {
+        if (clientDetail.getOwnerUsername() != null && !clientDetail.getOwnerUsername().isBlank()) {
+            return clientDetail.getOwnerUsername();
+        }
+        return user != null ? user.getUsername() : null;
+    }
+
+    private String resolveAccessRole(User user, ClientAndRoomOnBoardId clientDetail) {
+        if (clientDetail.getAccessRole() != null && !clientDetail.getAccessRole().isBlank()) {
+            return normalizeAccessRole(clientDetail.getAccessRole());
+        }
+        String ownerUsername = resolveOwnerUsername(user, clientDetail);
+        if (ownerUsername != null && user != null && Objects.equals(ownerUsername, user.getUsername())) {
+            return PROPERTY_ROLE_MODERATOR;
+        }
+        return PROPERTY_ROLE_USER;
+    }
+
+    private String normalizeAccessRole(String accessRole) {
+        if (accessRole == null || accessRole.isBlank()) {
+            return PROPERTY_ROLE_USER;
+        }
+
+        String normalized = accessRole.trim().toUpperCase();
+        if ("MODERATOR".equals(normalized)) {
+            return PROPERTY_ROLE_MODERATOR;
+        }
+        if ("USER".equals(normalized)) {
+            return PROPERTY_ROLE_USER;
+        }
+        if (PROPERTY_ROLE_MODERATOR.equals(normalized)) {
+            return PROPERTY_ROLE_MODERATOR;
+        }
+        return PROPERTY_ROLE_USER;
+    }
+
+    private void reconcilePropertyScopedRoles(User user) {
+        Set<String> roleIds = user.getRoleIds() != null ? new LinkedHashSet<>(user.getRoleIds()) : new LinkedHashSet<>();
+        Role userRole = getOrCreateRole(EmployeeRole.ROLE_USER);
+        roleIds.add(userRole.getId());
+
+        Role moderatorRole = getOrCreateRole(EmployeeRole.ROLE_MODERATOR);
+        boolean hasModeratorAssignment = user.getClientDetails() != null
+                && user.getClientDetails().stream().anyMatch(clientDetail -> PROPERTY_ROLE_MODERATOR.equals(resolveAccessRole(user, clientDetail)));
+        if (hasModeratorAssignment) {
+            roleIds.add(moderatorRole.getId());
+        } else {
+            roleIds.remove(moderatorRole.getId());
+        }
+        user.setRoleIds(roleIds);
+    }
+
+    private Role getOrCreateRole(EmployeeRole employeeRole) {
+        return roleRepository.findByName(employeeRole).orElseGet(() -> {
+            Role role = new Role();
+            role.setName(employeeRole);
+            return roleRepository.save(role);
+        });
     }
 }

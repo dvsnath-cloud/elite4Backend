@@ -2,6 +2,7 @@ package com.elite4.anandan.registrationservices.dto;
 
 import jakarta.validation.Valid;
 import lombok.Data;
+
 import java.util.List;
 
 @Data
@@ -9,6 +10,8 @@ public class ClientAndRoomOnBoardId {
     private String coliveName;
     private String roomOnBoardId;
     private String clientCategory;
+    private String ownerUsername;
+    private String accessRole;
     @Valid
     private List<BankDetails> bankDetailsList;
 

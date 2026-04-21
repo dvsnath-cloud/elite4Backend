@@ -156,6 +156,8 @@ public class UserCreationService {
                     clientAndRoomOnBoardId.setLegalBusinessName(clientName.getLegalBusinessName());
                     clientAndRoomOnBoardId.setBusinessType(clientName.getBusinessType());
                     clientAndRoomOnBoardId.setBusinessAddress(clientName.getBusinessAddress());
+                    clientAndRoomOnBoardId.setOwnerUsername(request.getUsername());
+                    clientAndRoomOnBoardId.setAccessRole(EmployeeRole.ROLE_MODERATOR.name());
                     // Step 3: Upload property photos for each coLive and save to DB
                     if (propertyPhotosMap != null && !propertyPhotosMap.isEmpty()) {
                         java.util.List<byte[]> photosList = propertyPhotosMap.get(clientName.getColiveName());
@@ -405,6 +407,8 @@ public class UserCreationService {
         clientAndRoomOnBoardId.setLegalBusinessName(request.getLegalBusinessName());
         clientAndRoomOnBoardId.setBusinessType(request.getBusinessType());
         clientAndRoomOnBoardId.setBusinessAddress(request.getBusinessAddress());
+        clientAndRoomOnBoardId.setOwnerUsername(request.getUsername());
+        clientAndRoomOnBoardId.setAccessRole(EmployeeRole.ROLE_MODERATOR.name());
         // Step 2: Upload property photos if provided
         java.util.List<String> uploadedPaths = new java.util.ArrayList<>();
         if (propertyPhotos != null && !propertyPhotos.isEmpty()) {
@@ -976,6 +980,12 @@ public class UserCreationService {
                 coliveNameAndRooms.setRooms(roomNumbers);
                 String category = clientAndRoomOnBoardId.getClientCategory();
                 coliveNameAndRooms.setCategoryType(ColiveNameAndRooms.categoryValues.valueOf(category));
+                coliveNameAndRooms.setOwnerUsername(clientAndRoomOnBoardId.getOwnerUsername() != null && !clientAndRoomOnBoardId.getOwnerUsername().isBlank()
+                        ? clientAndRoomOnBoardId.getOwnerUsername()
+                        : user.getUsername());
+                coliveNameAndRooms.setAccessRole(clientAndRoomOnBoardId.getAccessRole() != null && !clientAndRoomOnBoardId.getAccessRole().isBlank()
+                        ? clientAndRoomOnBoardId.getAccessRole()
+                        : EmployeeRole.ROLE_MODERATOR.name());
                 coliveNameAndRooms.setBankDetailsList(clientAndRoomOnBoardId.getBankDetailsList());
                 // Map license documents and photos from entity to DTO
                 coliveNameAndRooms.setLicenseDocumentsPath(clientAndRoomOnBoardId.getLicenseDocumentsPath());
