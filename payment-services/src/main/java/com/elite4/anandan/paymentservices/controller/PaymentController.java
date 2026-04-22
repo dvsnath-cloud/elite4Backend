@@ -59,8 +59,6 @@ public class PaymentController {
             log.info("POST /payments/order → Razorpay order created: id={}, amount={}, status={}",
                     order.optString("id"), order.optInt("amount"), order.optString("status"));
 
-            //paymentService.notifyPaymentInitiated(request, order);
-
             PaymentResponse resp = new PaymentResponse();
             resp.setOrderId(order.optString("id"));
             resp.setAmount(order.optInt("amount"));
@@ -120,7 +118,6 @@ public class PaymentController {
             }
 
             log.info("POST /payments/verify → signature verified for orderId={}", request.getRazorpayOrderId());
-            //paymentService.notifyPaymentSuccess(request);
 
             PaymentResponse response = new PaymentResponse();
             response.setOrderId(request.getRazorpayOrderId());

@@ -2,7 +2,6 @@ package com.elite4.anandan.registrationservices.repository;
 
 import com.elite4.anandan.registrationservices.document.RegistrationDocument;
 import com.elite4.anandan.registrationservices.dto.Registration;
-import com.elite4.anandan.registrationservices.dto.RegistrationWithRoomRequest;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.mongodb.repository.MongoRepository;

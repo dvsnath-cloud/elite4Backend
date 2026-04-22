@@ -8,11 +8,15 @@ import com.elite4.anandan.registrationservices.dto.ColiveNameAndRooms;
 import com.elite4.anandan.registrationservices.dto.PropertyAccessAssignmentRequest;
 import com.elite4.anandan.registrationservices.dto.PropertyAccessAssignmentResponse;
 import com.elite4.anandan.registrationservices.dto.Room;
+import com.elite4.anandan.registrationservices.dto.AdminGroupResponse;
+import com.elite4.anandan.registrationservices.dto.BulkPropertyAccessRequest;
 import com.elite4.anandan.registrationservices.dto.UpdateColiveBankDetailsRequest;
 import com.elite4.anandan.registrationservices.dto.UserResponse;
+import com.elite4.anandan.registrationservices.model.AdminGroup;
 import com.elite4.anandan.registrationservices.model.EmployeeRole;
 import com.elite4.anandan.registrationservices.model.Role;
 import com.elite4.anandan.registrationservices.model.User;
+import com.elite4.anandan.registrationservices.repository.AdminGroupRepository;
 import com.elite4.anandan.registrationservices.repository.RoleRepository;
 import com.elite4.anandan.registrationservices.repository.RoomsOrHouseRepository;
 import com.elite4.anandan.registrationservices.repository.UserRepository;
@@ -42,11 +46,14 @@ public class AdminService {
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
     private final RoomsOrHouseRepository roomsOrHouseRepository;
+    private final AdminGroupRepository adminGroupRepository;
 
-    public AdminService(UserRepository userRepository, RoleRepository roleRepository, RoomsOrHouseRepository roomsOrHouseRepository) {
+    public AdminService(UserRepository userRepository, RoleRepository roleRepository,
+                        RoomsOrHouseRepository roomsOrHouseRepository, AdminGroupRepository adminGroupRepository) {
         this.userRepository = userRepository;
         this.roleRepository = roleRepository;
         this.roomsOrHouseRepository = roomsOrHouseRepository;
+        this.adminGroupRepository = adminGroupRepository;
     }
 
     @Autowired
@@ -743,10 +750,116 @@ public class AdminService {
     }
 
     private Role getOrCreateRole(EmployeeRole employeeRole) {
-        return roleRepository.findByName(employeeRole).orElseGet(() -> {
-            Role role = new Role();
-            role.setName(employeeRole);
-            return roleRepository.save(role);
-        });
+        List<Role> existing = roleRepository.findAllByName(employeeRole);
+        if (!existing.isEmpty()) {
+            return existing.get(0);
+        }
+        Role role = new Role();
+        role.setName(employeeRole);
+        return roleRepository.save(role);
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // Admin Group management  (reuses existing User/Role infrastructure)
+    // ══════════════════════════════════════════════════════════════════════════
+
+    public List<AdminGroupResponse> listAdminGroups() {
+        return adminGroupRepository.findAll().stream()
+                .map(this::toAdminGroupResponse)
+                .collect(Collectors.toList());
+    }
+
+    public ResponseEntity<?> createAdminGroup(String groupName, String description, String createdBy) {
+        if (groupName == null || groupName.isBlank())
+            return ResponseEntity.badRequest().body("groupName is required");
+        if (adminGroupRepository.findByGroupName(groupName.trim()).isPresent())
+            return ResponseEntity.badRequest().body("Group '" + groupName + "' already exists");
+
+        AdminGroup group = new AdminGroup();
+        group.setGroupName(groupName.trim());
+        group.setDescription(description);
+        group.setCreatedBy(createdBy);
+        return ResponseEntity.ok(toAdminGroupResponse(adminGroupRepository.save(group)));
+    }
+
+    public ResponseEntity<?> deleteAdminGroup(String groupId) {
+        Optional<AdminGroup> opt = adminGroupRepository.findById(groupId);
+        if (opt.isEmpty()) return ResponseEntity.notFound().build();
+        if (opt.get().isSuperAdmin())
+            return ResponseEntity.badRequest().body("Cannot delete the super-admin group");
+        adminGroupRepository.deleteById(groupId);
+        return ResponseEntity.noContent().build();
+    }
+
+    /** Add or remove a member username from a group. action = "add" | "remove" */
+    public ResponseEntity<?> updateGroupMember(String groupId, String username, String action) {
+        Optional<AdminGroup> opt = adminGroupRepository.findById(groupId);
+        if (opt.isEmpty()) return ResponseEntity.notFound().build();
+        if (userRepository.findByUsername(username).isEmpty())
+            return ResponseEntity.badRequest().body("User '" + username + "' not found");
+
+        AdminGroup group = opt.get();
+        Set<String> members = group.getMemberUsernames() != null
+                ? new LinkedHashSet<>(group.getMemberUsernames()) : new LinkedHashSet<>();
+
+        if ("add".equalsIgnoreCase(action)) {
+            members.add(username);
+        } else if ("remove".equalsIgnoreCase(action)) {
+            if (group.isSuperAdmin() && members.size() == 1)
+                return ResponseEntity.badRequest().body("Super-admin group must have at least one member");
+            members.remove(username);
+        } else {
+            return ResponseEntity.badRequest().body("action must be 'add' or 'remove'");
+        }
+        group.setMemberUsernames(members);
+        group.setUpdatedAt(Instant.now());
+        return ResponseEntity.ok(toAdminGroupResponse(adminGroupRepository.save(group)));
+    }
+
+    private AdminGroupResponse toAdminGroupResponse(AdminGroup g) {
+        AdminGroupResponse r = new AdminGroupResponse();
+        r.setId(g.getId());
+        r.setGroupName(g.getGroupName());
+        r.setDescription(g.getDescription());
+        r.setSuperAdmin(g.isSuperAdmin());
+        r.setMemberUsernames(g.getMemberUsernames());
+        r.setMemberCount(g.getMemberUsernames() != null ? g.getMemberUsernames().size() : 0);
+        r.setCreatedBy(g.getCreatedBy());
+        r.setCreatedAt(g.getCreatedAt());
+        r.setUpdatedAt(g.getUpdatedAt());
+        return r;
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // Bulk property-access  (reuses existing upsertPropertyAccess per entry)
+    // ══════════════════════════════════════════════════════════════════════════
+
+    /**
+     * Assign one user to many properties in a single call.
+     * Delegates to the existing upsertPropertyAccess() for each entry so all
+     * validation, role reconciliation and DB logic is fully reused.
+     */
+    public ResponseEntity<?> bulkUpsertPropertyAccess(BulkPropertyAccessRequest req) {
+        if (req.getAssignments() == null || req.getAssignments().isEmpty())
+            return ResponseEntity.badRequest().body("assignments list is required");
+
+        List<Object> results = new ArrayList<>();
+        List<String> errors  = new ArrayList<>();
+
+        for (PropertyAccessAssignmentRequest a : req.getAssignments()) {
+            // Stamp the canonical targetUsername from the top-level field
+            a.setTargetUsername(req.getTargetUsername());
+            ResponseEntity<?> r = upsertPropertyAccess(a);
+            if (r.getStatusCode().is2xxSuccessful()) {
+                results.add(r.getBody());
+            } else {
+                errors.add(a.getColiveName() + ": " + r.getBody());
+            }
+        }
+
+        if (!errors.isEmpty())
+            return ResponseEntity.status(207).body(
+                    java.util.Map.of("succeeded", results, "failed", errors));
+        return ResponseEntity.ok(results);
     }
 }

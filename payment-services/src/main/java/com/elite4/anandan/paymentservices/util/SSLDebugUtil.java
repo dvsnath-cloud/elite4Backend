@@ -2,7 +2,6 @@ package com.elite4.anandan.paymentservices.util;
 
 import lombok.extern.slf4j.Slf4j;
 import java.net.URL;
-import java.net.URLConnection;
 import javax.net.ssl.HttpsURLConnection;
 import javax.net.ssl.SSLContext;
 import java.security.cert.Certificate;

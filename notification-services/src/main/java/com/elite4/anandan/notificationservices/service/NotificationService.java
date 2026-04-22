@@ -19,7 +19,6 @@ import org.thymeleaf.context.Context;
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 @Service

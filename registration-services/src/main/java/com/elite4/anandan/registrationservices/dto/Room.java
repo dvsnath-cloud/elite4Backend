@@ -1,6 +1,5 @@
 package com.elite4.anandan.registrationservices.dto;
 
-import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
 
 import java.util.Objects;
