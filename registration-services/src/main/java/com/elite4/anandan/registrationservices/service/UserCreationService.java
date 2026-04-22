@@ -219,9 +219,9 @@ public class UserCreationService {
             user.setPhoneE164(phoneService.toE164(request.getPhoneNumber()));
             user.setPhoneRaw(request.getPhoneNumber());
             user.setClientDetails(clientAndRoomOnBoardIdsSet);
-            if (request.getRoleIds().contains("ROLE_USER")) {
-                user.setActive(true);
-            }
+            // All self-registered users (staff and property owners) start inactive and require
+            // admin approval via the Approvals tab. Only the approveUser() admin action sets active=true.
+            // (Tenants onboarded by moderators are set active directly in RegistrationService.)
             try {
                 User saved = userRepository.save(user);
                 UserResponse response = toUserResponse(saved);

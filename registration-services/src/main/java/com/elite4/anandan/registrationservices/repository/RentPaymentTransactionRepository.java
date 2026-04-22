@@ -1,7 +1,6 @@
 package com.elite4.anandan.registrationservices.repository;
 
 import com.elite4.anandan.registrationservices.document.RentPaymentTransaction;
-import org.springframework.data.domain.Pageable;
 import org.springframework.data.mongodb.repository.MongoRepository;
 import org.springframework.data.mongodb.repository.Query;
 import org.springframework.stereotype.Repository;

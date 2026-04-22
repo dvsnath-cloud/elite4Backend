@@ -4,9 +4,14 @@ package com.elite4.anandan.registrationservices.controller;
 import com.elite4.anandan.registrationservices.dto.*;
 import com.elite4.anandan.registrationservices.model.User;
 import com.elite4.anandan.registrationservices.repository.UserRepository;
+import com.elite4.anandan.registrationservices.security.JwtTokenProvider;
 import com.elite4.anandan.registrationservices.service.AdminService;
 import com.elite4.anandan.registrationservices.service.AuthService;
 import com.elite4.anandan.registrationservices.service.UserCreationService;
+import java.security.interfaces.RSAPublicKey;
+import java.util.Base64;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.logging.log4j.util.Strings;
@@ -36,15 +41,18 @@ public class UserController {
     private final AuthService authService;
     private final AdminService adminService;
     private final UserRepository userRepository;
+    private final JwtTokenProvider jwtTokenProvider;
 
     public UserController(UserCreationService userCreationService,
                           AuthService authService,
                           AdminService adminService,
-                          UserRepository userRepository) {
+                          UserRepository userRepository,
+                          JwtTokenProvider jwtTokenProvider) {
         this.userCreationService = userCreationService;
         this.authService = authService;
         this.adminService = adminService;
         this.userRepository = userRepository;
+        this.jwtTokenProvider = jwtTokenProvider;
     }
     /**
      * Signup API with file uploads (user aadhar + property photos for each coLive)
@@ -556,6 +564,70 @@ public class UserController {
             @PathVariable String coliveName,
             @RequestParam String filePath) {
         return userCreationService.deleteLicenseDocument(username, coliveName, filePath);
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // JWKS endpoint – public, no auth required
+    // Returns the RSA public key in standard JWK Set format so any consumer can
+    // validate RS256 tokens without sharing the private key.
+    // ──────────────────────────────────────────────────────────────────────────
+
+    @GetMapping("/.well-known/jwks.json")
+    public ResponseEntity<?> jwks() {
+        RSAPublicKey pub = jwtTokenProvider.getPublicKey();
+        Map<String, Object> key = new LinkedHashMap<>();
+        key.put("kty", "RSA");
+        key.put("use", "sig");
+        key.put("alg", "RS256");
+        key.put("kid", "default");
+        key.put("n", Base64.getUrlEncoder().withoutPadding().encodeToString(pub.getModulus().toByteArray()));
+        key.put("e", Base64.getUrlEncoder().withoutPadding().encodeToString(pub.getPublicExponent().toByteArray()));
+        Map<String, Object> jwks = new HashMap<>();
+        jwks.put("keys", List.of(key));
+        return ResponseEntity.ok(jwks);
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Admin Group CRUD
+    // ──────────────────────────────────────────────────────────────────────────
+
+    @GetMapping("/admin/groups")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<?> listAdminGroups() {
+        return ResponseEntity.ok(adminService.listAdminGroups());
+    }
+
+    @PostMapping("/admin/groups")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<?> createAdminGroup(@RequestBody Map<String, String> body,
+                                               Authentication auth) {
+        return adminService.createAdminGroup(
+                body.get("groupName"), body.get("description"), auth.getName());
+    }
+
+    @DeleteMapping("/admin/groups/{groupId}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<?> deleteAdminGroup(@PathVariable String groupId) {
+        return adminService.deleteAdminGroup(groupId);
+    }
+
+    /** action = "add" or "remove" – single endpoint covers both operations */
+    @PutMapping("/admin/groups/{groupId}/members/{username}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<?> updateGroupMember(@PathVariable String groupId,
+                                                @PathVariable String username,
+                                                @RequestParam(defaultValue = "add") String action) {
+        return adminService.updateGroupMember(groupId, username, action);
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Bulk property-access  (assigns one user to many properties at once)
+    // ──────────────────────────────────────────────────────────────────────────
+
+    @PostMapping("/admin/bulk-property-access")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<?> bulkPropertyAccess(@RequestBody BulkPropertyAccessRequest req) {
+        return adminService.bulkUpsertPropertyAccess(req);
     }
 }
 

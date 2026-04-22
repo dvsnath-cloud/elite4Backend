@@ -3,6 +3,7 @@ package com.elite4.anandan.registrationservices.security;
 
 import com.elite4.anandan.registrationservices.model.Role;
 import com.elite4.anandan.registrationservices.model.User;
+import com.elite4.anandan.registrationservices.repository.AdminGroupRepository;
 import com.elite4.anandan.registrationservices.repository.RoleRepository;
 import com.elite4.anandan.registrationservices.repository.UserRepository;
 import jakarta.servlet.FilterChain;
@@ -36,11 +37,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private final JwtTokenProvider tokenProvider;
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
+    private final AdminGroupRepository adminGroupRepository;
 
-    public JwtAuthenticationFilter(JwtTokenProvider tokenProvider, UserRepository userRepository, RoleRepository roleRepository) {
+    public JwtAuthenticationFilter(JwtTokenProvider tokenProvider, UserRepository userRepository,
+                                   RoleRepository roleRepository, AdminGroupRepository adminGroupRepository) {
         this.tokenProvider = tokenProvider;
         this.userRepository = userRepository;
         this.roleRepository = roleRepository;
+        this.adminGroupRepository = adminGroupRepository;
     }
 
 
@@ -117,6 +121,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                             log.warn("⚠️ Role not found for ID: {}", value);
                         }
                     }
+
+                    // Admin group membership → grant ROLE_ADMIN regardless of stored roleIds
+                    if (!resolvedRoles.contains("ROLE_ADMIN") &&
+                            adminGroupRepository.existsByMemberUsernamesContaining(user.getUsername())) {
+                        resolvedRoles.add("ROLE_ADMIN");
+                        log.info("✅ User {} is in an admin group — ROLE_ADMIN granted", user.getUsername());
+                    }
+
                     List<SimpleGrantedAuthority> authorities = resolvedRoles
                             .stream()
                             .map(SimpleGrantedAuthority::new)

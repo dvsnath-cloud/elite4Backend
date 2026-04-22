@@ -486,9 +486,6 @@ public class TransferService {
 
         // --- Notification: Transfer rejected ---
         try {
-            String fromRoom = saved.getFromRoomNumber() != null ? saved.getFromRoomNumber() : saved.getFromHouseNumber();
-            String toRoom = saved.getToRoomNumber() != null ? saved.getToRoomNumber() : saved.getToHouseNumber();
-
             // Notify tenant
             String tenantMsg = "Dear " + saved.getTenantName() + ", your transfer request from " + saved.getFromColiveName()
                     + " to " + saved.getToColiveName() + " has been rejected."
