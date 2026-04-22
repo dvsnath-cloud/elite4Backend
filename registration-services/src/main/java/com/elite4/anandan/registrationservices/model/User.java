@@ -39,6 +39,8 @@ public class User {
     private String aadharPhotoPath;
     private boolean active = false;
     private boolean forcePasswordChange = false;
+    private String passwordResetOtp;
+    private Instant passwordResetOtpExpiry;
     private Instant createdAt;
     private Instant updatedAt;
     private Instant lastLoginAt;
@@ -99,4 +101,8 @@ public class User {
     public void setOwnerOfClient(String ownerOfClient) { this.ownerOfClient = ownerOfClient; }
     public Set<String> getRooms() { return rooms; }
     public void setRooms(Set<String> rooms) { this.rooms = rooms != null ? rooms : new HashSet<>(); }
+    public String getPasswordResetOtp() { return passwordResetOtp; }
+    public void setPasswordResetOtp(String passwordResetOtp) { this.passwordResetOtp = passwordResetOtp; }
+    public Instant getPasswordResetOtpExpiry() { return passwordResetOtpExpiry; }
+    public void setPasswordResetOtpExpiry(Instant passwordResetOtpExpiry) { this.passwordResetOtpExpiry = passwordResetOtpExpiry; }
 }

@@ -63,7 +63,8 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/adminservices/signup", "/adminservices/login","/adminservices/signup-with-files",
-                                "/adminservices/.well-known/jwks.json").permitAll()
+                                "/adminservices/.well-known/jwks.json",
+                                "/adminservices/forgot-password", "/adminservices/reset-password").permitAll()
                         .anyRequest().authenticated()
                 )
                 .exceptionHandling(ex -> ex.authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)))

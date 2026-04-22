@@ -219,9 +219,8 @@ public class UserCreationService {
             user.setPhoneE164(phoneService.toE164(request.getPhoneNumber()));
             user.setPhoneRaw(request.getPhoneNumber());
             user.setClientDetails(clientAndRoomOnBoardIdsSet);
-            // All self-registered users (staff and property owners) start inactive and require
-            // admin approval via the Approvals tab. Only the approveUser() admin action sets active=true.
-            // (Tenants onboarded by moderators are set active directly in RegistrationService.)
+            // Self-registered users are immediately active so they can login right after signup.
+            user.setActive(true);
             try {
                 User saved = userRepository.save(user);
                 UserResponse response = toUserResponse(saved);
@@ -478,6 +477,10 @@ public class UserCreationService {
                     // Add new client to existing set
                     existingClients.addAll(clientAndRoomOnBoardIdsSet);
                     u.setClientDetails(existingClients);
+
+                    // NOTE: Do NOT promote user to global ROLE_MODERATOR here.
+                    // The per-property accessRole on ClientAndRoomOnBoardId is the
+                    // authoritative source for property-level access decisions.
 
                     // Update other fields if provided
                     if (request.getEmail() != null) {

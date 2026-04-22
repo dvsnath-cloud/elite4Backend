@@ -1,14 +1,18 @@
 package com.elite4.anandan.registrationservices.service;
 
 import com.elite4.anandan.registrationservices.dto.ChangePasswordRequest;
+import com.elite4.anandan.registrationservices.dto.ForgotPasswordRequest;
 import com.elite4.anandan.registrationservices.dto.JwtResponse;
 import com.elite4.anandan.registrationservices.dto.LoginRequest;
+import com.elite4.anandan.registrationservices.dto.ResetPasswordRequest;
 import com.elite4.anandan.registrationservices.model.User;
 import com.elite4.anandan.registrationservices.repository.UserRepository;
 import com.elite4.anandan.registrationservices.security.JwtTokenProvider;
+import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -22,6 +26,9 @@ public class AuthService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenProvider jwtTokenProvider;
+
+    @Autowired
+    private NotificationClient notificationClient;
 
     public AuthService(UserRepository userRepository,
                        PasswordEncoder passwordEncoder,
@@ -114,6 +121,95 @@ public class AuthService {
             log.error("CHANGE PASSWORD FAILED - Exception: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body("Failed to change password: " + e.getMessage());
+        }
+    }
+
+    public ResponseEntity<?> requestPasswordReset(ForgotPasswordRequest request) {
+        try {
+            User user = null;
+            if (request.getEmail() != null && !request.getEmail().isBlank()) {
+                user = userRepository.findByEmail(request.getEmail()).orElse(null);
+            } else if (request.getPhoneNumber() != null && !request.getPhoneNumber().isBlank()) {
+                user = userRepository.findByPhoneE164(request.getPhoneNumber())
+                        .or(() -> userRepository.findByPhoneRaw(request.getPhoneNumber()))
+                        .orElse(null);
+            }
+
+            // Always return the same message to avoid user enumeration
+            if (user == null || !user.isActive()) {
+                return ResponseEntity.ok("If an account with those details exists, an OTP has been sent.");
+            }
+
+            String otp = String.format("%06d", new SecureRandom().nextInt(1_000_000));
+            user.setPasswordResetOtp(otp);
+            user.setPasswordResetOtpExpiry(Instant.now().plusSeconds(900)); // 15 minutes
+            userRepository.save(user);
+
+            log.info("Password reset OTP generated for user: {} [dev log, remove in prod]", user.getUsername());
+
+            String recipient = request.getEmail() != null && !request.getEmail().isBlank()
+                    ? request.getEmail() : null;
+            if (recipient != null) {
+                try {
+                    notificationClient.sendEmail(
+                            recipient,
+                            "CoLive Connect – Password Reset OTP",
+                            "Your OTP to reset your password is: " + otp + "\n\nThis OTP is valid for 15 minutes. Do not share it with anyone."
+                    );
+                } catch (Exception e) {
+                    log.warn("Failed to send password reset email to {}: {}", recipient, e.getMessage());
+                }
+            }
+
+            return ResponseEntity.ok("If an account with those details exists, an OTP has been sent.");
+        } catch (Exception e) {
+            log.error("REQUEST PASSWORD RESET FAILED: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("An unexpected error occurred. Please try again.");
+        }
+    }
+
+    public ResponseEntity<?> resetPasswordWithOtp(ResetPasswordRequest request) {
+        try {
+            if (request.getOtp() == null || request.getOtp().isBlank()) {
+                return ResponseEntity.badRequest().body("OTP is required.");
+            }
+            if (request.getNewPassword() == null || request.getNewPassword().length() < 8) {
+                return ResponseEntity.badRequest().body("New password must be at least 8 characters.");
+            }
+
+            User user = null;
+            if (request.getEmail() != null && !request.getEmail().isBlank()) {
+                user = userRepository.findByEmail(request.getEmail()).orElse(null);
+            } else if (request.getPhoneNumber() != null && !request.getPhoneNumber().isBlank()) {
+                user = userRepository.findByPhoneE164(request.getPhoneNumber())
+                        .or(() -> userRepository.findByPhoneRaw(request.getPhoneNumber()))
+                        .orElse(null);
+            }
+
+            if (user == null) {
+                return ResponseEntity.badRequest().body("Invalid OTP or OTP has expired.");
+            }
+
+            if (user.getPasswordResetOtp() == null || user.getPasswordResetOtpExpiry() == null
+                    || Instant.now().isAfter(user.getPasswordResetOtpExpiry())
+                    || !user.getPasswordResetOtp().equals(request.getOtp())) {
+                return ResponseEntity.badRequest().body("Invalid OTP or OTP has expired.");
+            }
+
+            user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
+            user.setPasswordResetOtp(null);
+            user.setPasswordResetOtpExpiry(null);
+            user.setForcePasswordChange(false);
+            user.setUpdatedAt(Instant.now());
+            userRepository.save(user);
+
+            log.info("Password reset successfully for user: {}", user.getUsername());
+            return ResponseEntity.ok("Password reset successfully. Please log in with your new password.");
+        } catch (Exception e) {
+            log.error("RESET PASSWORD WITH OTP FAILED: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("An unexpected error occurred. Please try again.");
         }
     }
 }

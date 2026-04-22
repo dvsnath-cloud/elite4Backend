@@ -362,6 +362,16 @@ public class UserController {
         return authService.changePassword(authentication, request);
     }
 
+    @PostMapping("/forgot-password")
+    public ResponseEntity<?> forgotPassword(@RequestBody ForgotPasswordRequest request) {
+        return authService.requestPasswordReset(request);
+    }
+
+    @PostMapping("/reset-password")
+    public ResponseEntity<?> resetPassword(@RequestBody ResetPasswordRequest request) {
+        return authService.resetPasswordWithOtp(request);
+    }
+
 
     /**
      * Get all users pending approval (inactive users).

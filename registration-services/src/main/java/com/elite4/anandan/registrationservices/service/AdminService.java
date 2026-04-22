@@ -733,6 +733,18 @@ public class AdminService {
         return PROPERTY_ROLE_USER;
     }
 
+    /**
+     * Reconciles global roleIds for a user based on their property assignments.
+     *
+     * ROLE_MODERATOR is added to user.roleIds when the user has at least one property
+     * assignment with accessRole=ROLE_MODERATOR. This is required so Spring Security
+     * @PreAuthorize("hasAnyRole('MODERATOR')") endpoints remain accessible.
+     *
+     * NOTE: The global ROLE_MODERATOR here grants API-level access. Per-property
+     * management rights (which property a user can manage in the UI) are governed
+     * solely by ClientAndRoomOnBoardId.accessRole — not by this global role.
+     * The frontend must use getPropertyRoles(property) for per-property UI decisions.
+     */
     private void reconcilePropertyScopedRoles(User user) {
         Set<String> roleIds = user.getRoleIds() != null ? new LinkedHashSet<>(user.getRoleIds()) : new LinkedHashSet<>();
         Role userRole = getOrCreateRole(EmployeeRole.ROLE_USER);
@@ -747,6 +759,7 @@ public class AdminService {
             roleIds.remove(moderatorRole.getId());
         }
         user.setRoleIds(roleIds);
+        log.debug("🔒 reconcilePropertyScopedRoles: user={} roleIds={}", user.getUsername(), roleIds);
     }
 
     private Role getOrCreateRole(EmployeeRole employeeRole) {
