@@ -118,7 +118,7 @@ public class RefundService {
                 try {
                     notificationClient.sendEmail(
                             null, // We don't have tenant email in transfer doc
-                            "Refund Processed - CoLive Connect",
+                            "Refund Processed - CoLives Connect",
                             String.format("Dear %s, your refund of ₹%.2f for payment %s has been processed. " +
                                             "Refund ID: %s. Amount will be credited within 5-7 business days.",
                                     transfer.getTenantName(), refundAmount / 100.0,

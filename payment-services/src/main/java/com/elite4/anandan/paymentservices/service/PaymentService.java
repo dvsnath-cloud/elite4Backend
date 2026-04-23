@@ -34,7 +34,7 @@ public class PaymentService {
 
     public PaymentService(@Value("${razorpay.keyId}") String keyId,
                           @Value("${razorpay.keySecret}") String keySecret,
-                          @Value("${razorpay.companyName:CoLive Connect}") String companyName,
+                          @Value("${razorpay.companyName:CoLives Connect}") String companyName,
                           @Value("${razorpay.platformFee:4900}") int platformFee,
                           @Value("${razorpay.routeEnabled:true}") boolean routeEnabled,
                           NotificationClient notificationClient,

@@ -118,7 +118,7 @@ public class TransferService {
                     + saved.getFromColiveName() + " (Room: " + fromRoom + ") to " + saved.getToColiveName() + " (Room: " + toRoom
                     + "). Awaiting approval from property owners.";
             if (tenant.getEmail() != null && !tenant.getEmail().isBlank()) {
-                notificationClient.sendEmail(tenant.getEmail(), "Transfer Request Created - CoLive Connect", tenantMsg);
+                notificationClient.sendEmail(tenant.getEmail(), "Transfer Request Created - CoLives Connect", tenantMsg);
             }
             if (tenant.getContactNo() != null && !tenant.getContactNo().isBlank()) {
                 notificationClient.sendSms(tenant.getContactNo(), tenantMsg);
@@ -133,7 +133,7 @@ public class TransferService {
                         + " wants to transfer from your property " + saved.getFromColiveName() + " (Room: " + fromRoom
                         + ") to " + saved.getToColiveName() + ". Please review and approve/reject.";
                 if (owner.getEmail() != null && !owner.getEmail().isBlank()) {
-                    notificationClient.sendEmail(owner.getEmail(), "Transfer Approval Required - CoLive Connect", ownerMsg);
+                    notificationClient.sendEmail(owner.getEmail(), "Transfer Approval Required - CoLives Connect", ownerMsg);
                 }
                 if (owner.getPhoneRaw() != null && !owner.getPhoneRaw().isBlank()) {
                     notificationClient.sendSms(owner.getPhoneRaw(), ownerMsg);
@@ -298,7 +298,7 @@ public class TransferService {
                         + " is transferring from " + saved.getFromColiveName() + " to your property " + saved.getToColiveName()
                         + " (Room: " + toRoom + "). Source property has approved. Please review and approve/reject.";
                 if (owner.getEmail() != null && !owner.getEmail().isBlank()) {
-                    notificationClient.sendEmail(owner.getEmail(), "Transfer Approval Required - CoLive Connect", msg);
+                    notificationClient.sendEmail(owner.getEmail(), "Transfer Approval Required - CoLives Connect", msg);
                 }
                 if (owner.getPhoneRaw() != null && !owner.getPhoneRaw().isBlank()) {
                     notificationClient.sendSms(owner.getPhoneRaw(), msg);
@@ -309,7 +309,7 @@ public class TransferService {
             String tenantMsg = "Dear " + saved.getTenantName() + ", your transfer request from " + saved.getFromColiveName()
                     + " to " + saved.getToColiveName() + " has been approved by the source property. Awaiting destination property approval.";
             if (saved.getTenantEmail() != null && !saved.getTenantEmail().isBlank()) {
-                notificationClient.sendEmail(saved.getTenantEmail(), "Transfer Progress Update - CoLive Connect", tenantMsg);
+                notificationClient.sendEmail(saved.getTenantEmail(), "Transfer Progress Update - CoLives Connect", tenantMsg);
             }
             if (saved.getTenantContactNo() != null && !saved.getTenantContactNo().isBlank()) {
                 notificationClient.sendSms(saved.getTenantContactNo(), tenantMsg);
@@ -411,7 +411,7 @@ public class TransferService {
                     + " (Room: " + fromRoom + ") to " + saved.getToColiveName() + " (Room: " + toRoom
                     + ") has been completed successfully. Welcome to your new room!";
             if (saved.getTenantEmail() != null && !saved.getTenantEmail().isBlank()) {
-                notificationClient.sendEmail(saved.getTenantEmail(), "Transfer Completed - CoLive Connect", tenantMsg);
+                notificationClient.sendEmail(saved.getTenantEmail(), "Transfer Completed - CoLives Connect", tenantMsg);
             }
             if (saved.getTenantContactNo() != null && !saved.getTenantContactNo().isBlank()) {
                 notificationClient.sendSms(saved.getTenantContactNo(), tenantMsg);
@@ -425,7 +425,7 @@ public class TransferService {
                 String srcMsg = "Tenant " + saved.getTenantName() + " has been transferred out of your property "
                         + saved.getFromColiveName() + " (Room: " + fromRoom + "). Room is now available.";
                 if (owner.getEmail() != null && !owner.getEmail().isBlank()) {
-                    notificationClient.sendEmail(owner.getEmail(), "Tenant Transferred Out - CoLive Connect", srcMsg);
+                    notificationClient.sendEmail(owner.getEmail(), "Tenant Transferred Out - CoLives Connect", srcMsg);
                 }
                 if (owner.getPhoneRaw() != null && !owner.getPhoneRaw().isBlank()) {
                     notificationClient.sendSms(owner.getPhoneRaw(), srcMsg);
@@ -440,7 +440,7 @@ public class TransferService {
                 String destMsg = "Tenant " + saved.getTenantName() + " has been successfully transferred to your property "
                         + saved.getToColiveName() + " (Room: " + toRoom + ").";
                 if (owner.getEmail() != null && !owner.getEmail().isBlank()) {
-                    notificationClient.sendEmail(owner.getEmail(), "New Tenant Transferred In - CoLive Connect", destMsg);
+                    notificationClient.sendEmail(owner.getEmail(), "New Tenant Transferred In - CoLives Connect", destMsg);
                 }
                 if (owner.getPhoneRaw() != null && !owner.getPhoneRaw().isBlank()) {
                     notificationClient.sendSms(owner.getPhoneRaw(), destMsg);
@@ -491,7 +491,7 @@ public class TransferService {
                     + " to " + saved.getToColiveName() + " has been rejected."
                     + (rejectionReason != null ? " Reason: " + rejectionReason : "");
             if (saved.getTenantEmail() != null && !saved.getTenantEmail().isBlank()) {
-                notificationClient.sendEmail(saved.getTenantEmail(), "Transfer Request Rejected - CoLive Connect", tenantMsg);
+                notificationClient.sendEmail(saved.getTenantEmail(), "Transfer Request Rejected - CoLives Connect", tenantMsg);
             }
             if (saved.getTenantContactNo() != null && !saved.getTenantContactNo().isBlank()) {
                 notificationClient.sendSms(saved.getTenantContactNo(), tenantMsg);
@@ -508,7 +508,7 @@ public class TransferService {
                                 + saved.getFromColiveName() + " to " + saved.getToColiveName() + " has been rejected by " + rejectedBy + "."
                                 + (rejectionReason != null ? " Reason: " + rejectionReason : "");
                         if (owner.getEmail() != null && !owner.getEmail().isBlank()) {
-                            notificationClient.sendEmail(owner.getEmail(), "Transfer Request Rejected - CoLive Connect", ownerMsg);
+                            notificationClient.sendEmail(owner.getEmail(), "Transfer Request Rejected - CoLives Connect", ownerMsg);
                         }
                         if (owner.getPhoneRaw() != null && !owner.getPhoneRaw().isBlank()) {
                             notificationClient.sendSms(owner.getPhoneRaw(), ownerMsg);

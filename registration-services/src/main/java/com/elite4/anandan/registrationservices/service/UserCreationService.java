@@ -252,11 +252,11 @@ public class UserCreationService {
                             : "N/A";
                     boolean isPending = !saved.isActive();
                     String subject = isPending
-                            ? "CoLive Connect - Registration Received"
-                            : "Welcome to CoLive Connect!";
+                            ? "CoLives Connect - Registration Received"
+                            : "Welcome to CoLives Connect!";
                     String message = isPending
-                            ? "Dear " + saved.getUsername() + ", your registration with CoLive Connect has been received and is pending moderator approval. Properties: " + propertyNames + ". You will be notified once approved."
-                            : "Dear " + saved.getUsername() + ", welcome to CoLive Connect! Your account is now active. Properties: " + propertyNames + ".";
+                            ? "Dear " + saved.getUsername() + ", your registration with CoLives Connect has been received and is pending moderator approval. Properties: " + propertyNames + ". You will be notified once approved."
+                            : "Dear " + saved.getUsername() + ", welcome to CoLives Connect! Your account is now active. Properties: " + propertyNames + ".";
                     if (saved.getEmail() != null && !saved.getEmail().isBlank()) {
                         notificationClient.sendEmail(saved.getEmail(), subject, message);
                     }
@@ -509,8 +509,8 @@ public class UserCreationService {
 
                     // --- Notification: New property added ---
                     try {
-                        String subject = "New Property Added - CoLive Connect";
-                        String message = "Dear " + saved.getUsername() + ", a new property '" + request.getColiveName() + "' has been successfully added to your CoLive Connect account.";
+                        String subject = "New Property Added - CoLives Connect";
+                        String message = "Dear " + saved.getUsername() + ", a new property '" + request.getColiveName() + "' has been successfully added to your CoLives Connect account.";
                         if (saved.getEmail() != null && !saved.getEmail().isBlank()) {
                             notificationClient.sendEmail(saved.getEmail(), subject, message);
                         }

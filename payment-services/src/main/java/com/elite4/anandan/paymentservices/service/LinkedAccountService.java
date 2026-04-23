@@ -105,7 +105,7 @@ public class LinkedAccountService {
             JSONObject notes = new JSONObject();
             notes.put("ownerUsername", request.getOwnerUsername());
             notes.put("coliveName", request.getColiveName());
-            notes.put("platform", "CoLive Connect");
+            notes.put("platform", "CoLives Connect");
             accountRequest.put("notes", notes);
 
             log.info("Razorpay API → POST /v2/accounts, payload keys: {}", accountRequest.keySet());
@@ -687,7 +687,7 @@ public class LinkedAccountService {
                 JSONObject notes = new JSONObject();
                 notes.put("ownerUsername", doc.getOwnerUsername());
                 notes.put("coliveName", doc.getColiveName());
-                notes.put("platform", "CoLive Connect");
+                notes.put("platform", "CoLives Connect");
                 accountRequest.put("notes", notes);
 
                 // Call Razorpay

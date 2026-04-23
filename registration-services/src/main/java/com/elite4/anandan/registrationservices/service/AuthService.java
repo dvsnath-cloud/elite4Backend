@@ -213,7 +213,7 @@ public class AuthService {
                 try {
                     notificationClient.sendEmail(
                             recipient,
-                            "CoLive Connect – Password Reset OTP",
+                            "CoLives Connect – Password Reset OTP",
                             "Your OTP to reset your password is: " + otp + "\n\nThis OTP is valid for 15 minutes. Do not share it with anyone."
                     );
                 } catch (Exception e) {

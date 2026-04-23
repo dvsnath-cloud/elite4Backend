@@ -124,7 +124,7 @@ public class AdminService {
             String propertyNames = user.getClientDetails() != null
                     ? user.getClientDetails().stream().map(ClientAndRoomOnBoardId::getColiveName).collect(Collectors.joining(", "))
                     : "N/A";
-            String subject = "Your CoLive Connect account is approved!";
+            String subject = "Your CoLives Connect account is approved!";
             String message = "Dear " + (user.getUsername() != null ? user.getUsername() : "User") + ", your account has been approved by the moderator. Your properties: " + propertyNames + ". You can now log in and manage your colive.";
             if (user.getEmail() != null && !user.getEmail().isBlank()) {
                 notificationClient.sendEmail(user.getEmail(), subject, message);
@@ -161,8 +161,8 @@ public class AdminService {
             });
         }
         try {
-            String subject = "CoLive Connect - Registration Rejected";
-            String message = "Dear " + (user.getUsername() != null ? user.getUsername() : "User") + ", your CoLive Connect registration has been reviewed and rejected. Please contact support for more information.";
+            String subject = "CoLives Connect - Registration Rejected";
+            String message = "Dear " + (user.getUsername() != null ? user.getUsername() : "User") + ", your CoLives Connect registration has been reviewed and rejected. Please contact support for more information.";
             if (user.getEmail() != null && !user.getEmail().isBlank()) {
                 notificationClient.sendEmail(user.getEmail(), subject, message);
             }
@@ -197,8 +197,8 @@ public class AdminService {
         userRepository.save(user);
 
         try {
-            String subject = "CoLive Connect - Account Deactivated";
-            String message = "Dear " + (user.getUsername() != null ? user.getUsername() : "User") + ", your CoLive Connect account has been deactivated. Please contact the admin if you believe this is an error.";
+            String subject = "CoLives Connect - Account Deactivated";
+            String message = "Dear " + (user.getUsername() != null ? user.getUsername() : "User") + ", your CoLives Connect account has been deactivated. Please contact the admin if you believe this is an error.";
             if (user.getEmail() != null && !user.getEmail().isBlank()) {
                 notificationClient.sendEmail(user.getEmail(), subject, message);
             }
@@ -598,8 +598,8 @@ public class AdminService {
         User saved = userRepository.save(user);
 
         try {
-            String subject = "Bank Details Updated - CoLive Connect";
-            String message = "Dear " + (user.getUsername() != null ? user.getUsername() : "User") + ", bank details for property '" + coliveName + "' have been successfully updated on your CoLive Connect account.";
+            String subject = "Bank Details Updated - CoLives Connect";
+            String message = "Dear " + (user.getUsername() != null ? user.getUsername() : "User") + ", bank details for property '" + coliveName + "' have been successfully updated on your CoLives Connect account.";
             if (user.getEmail() != null && !user.getEmail().isBlank()) {
                 notificationClient.sendEmail(user.getEmail(), subject, message);
             }

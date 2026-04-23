@@ -558,7 +558,7 @@ public class RentPaymentService {
         // --- Notification: Payment approval/rejection ---
         try {
             String action = request.getApprove() ? "Approved" : "Rejected";
-            String tenantSubject = "Rent Payment " + action + " - CoLive Connect";
+            String tenantSubject = "Rent Payment " + action + " - CoLives Connect";
             String tenantMessage = "Dear " + saved.getTenantName() + ", your rent payment of ₹" + String.format("%.2f", saved.getPaidAmount())
                     + " for " + saved.getColiveName() + " (Room: " + saved.getRoomNumber() + ") has been " + action.toLowerCase() + "."
                     + (request.getRemarks() != null ? " Remarks: " + request.getRemarks() : "");
@@ -1032,7 +1032,7 @@ public class RentPaymentService {
      */
     private void sendPaymentNotifications(RentPaymentTransaction payment, RegistrationDocument registration, String eventType) {
         try {
-            String tenantSubject = eventType + " - CoLive Connect";
+            String tenantSubject = eventType + " - CoLives Connect";
             String roomInfo = payment.getRoomNumber() != null ? payment.getRoomNumber() : "N/A";
             String tenantMessage = "Dear " + payment.getTenantName() + ", your rent payment of ₹" + String.format("%.2f", payment.getPaidAmount())
                     + " for " + payment.getColiveName() + " (Room: " + roomInfo + ") has been recorded. Status: " + payment.getStatus()

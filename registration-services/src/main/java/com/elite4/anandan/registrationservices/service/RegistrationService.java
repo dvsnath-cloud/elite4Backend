@@ -60,8 +60,8 @@ public class RegistrationService {
 
         // --- Notification logic: Onboarded/Registered ---
         try {
-            String subject = "Welcome to CoLive Connect!";
-            String message = "Dear " + (dto.getFname() != null ? dto.getFname() : "User") + ", you have been successfully onboarded to CoLive Connect.";
+            String subject = "Welcome to CoLives Connect!";
+            String message = "Dear " + (dto.getFname() != null ? dto.getFname() : "User") + ", you have been successfully onboarded to CoLives Connect.";
             if (dto.getEmail() != null && !dto.getEmail().isBlank()) {
                 notificationClient.sendEmail(dto.getEmail(), subject, message);
             }
@@ -540,13 +540,13 @@ public class RegistrationService {
 
     private void sendTenantCredentialsNotification(RegistrationDocument doc) {
         String loginIdentifier = (doc.getEmail() != null && !doc.getEmail().isBlank()) ? doc.getEmail().trim() : doc.getContactNo();
-        String message = "Your CoLive Connect tenant account is ready. Login with " + loginIdentifier +
+        String message = "Your CoLives Connect tenant account is ready. Login with " + loginIdentifier +
                 " and temporary password " + defaultTenantPassword +
                 ". You will be asked to change your password after first login.";
 
         try {
             if (doc.getEmail() != null && !doc.getEmail().isBlank()) {
-                notificationClient.sendEmail(doc.getEmail().trim(), "Your CoLive Connect login is ready", message);
+                notificationClient.sendEmail(doc.getEmail().trim(), "Your CoLives Connect login is ready", message);
             }
         } catch (Exception ex) {
             log.warn("Failed to send tenant onboarding email for registration {}: {}", doc.getId(), ex.getMessage());

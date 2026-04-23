@@ -302,7 +302,7 @@ public class RentSchedulerService {
             // Fire 3 async notifications
             double totalDue = tenant.getRoomRent() + pendingBalance;
             String message = buildTenantNotificationMessage(tenant, monthName, pendingBalance, totalDue);
-            String subject = "Rent Due for " + monthName + " - CoLive Connect";
+            String subject = "Rent Due for " + monthName + " - CoLives Connect";
 
             CompletableFuture<NotificationChannelResult> emailFuture =
                     asyncNotificationService.sendEmailAsync(tenant.getId(), tenant.getEmail(), subject, message);
@@ -551,7 +551,7 @@ public class RentSchedulerService {
         }
 
         sb.append("\nPlease make the payment at your earliest convenience.\n");
-        sb.append("Thank you,\nCoLive Connect");
+        sb.append("Thank you,\nCoLives Connect");
         return sb.toString();
     }
 
@@ -570,7 +570,7 @@ public class RentSchedulerService {
         User owner = ownerOpt.get();
         String monthName = rentMonth.format(DateTimeFormatter.ofPattern("MMMM yyyy"));
 
-        String subject = "Monthly Rent Summary for " + monthName + " - CoLive Connect";
+        String subject = "Monthly Rent Summary for " + monthName + " - CoLives Connect";
         String message = buildOwnerSummaryMessage(monthName, summary);
 
         if (owner.getEmail() != null && !owner.getEmail().isBlank()) {
@@ -578,7 +578,7 @@ public class RentSchedulerService {
         }
         if (owner.getPhoneRaw() != null && !owner.getPhoneRaw().isBlank()) {
             String smsMessage = String.format(
-                    "CoLive Connect: %s rent summary — %d tenants, Expected: ₹%.0f, Pending from prev months: ₹%.0f, Total Outstanding: ₹%.0f",
+                    "CoLives Connect: %s rent summary — %d tenants, Expected: ₹%.0f, Pending from prev months: ₹%.0f, Total Outstanding: ₹%.0f",
                     monthName, summary.tenantCount, summary.totalExpectedRent,
                     summary.totalPendingBalance, summary.totalExpectedRent + summary.totalPendingBalance);
             notificationClient.sendSms(owner.getPhoneRaw(), smsMessage);
@@ -623,7 +623,7 @@ public class RentSchedulerService {
             }
         }
 
-        sb.append("\n— CoLive Connect");
+        sb.append("\n— CoLives Connect");
         return sb.toString();
     }
 
