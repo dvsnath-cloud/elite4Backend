@@ -5,9 +5,11 @@ import com.elite4.anandan.registrationservices.dto.ForgotPasswordRequest;
 import com.elite4.anandan.registrationservices.dto.JwtResponse;
 import com.elite4.anandan.registrationservices.dto.LoginRequest;
 import com.elite4.anandan.registrationservices.dto.ResetPasswordRequest;
+import com.elite4.anandan.registrationservices.dto.UserProfileUpdateRequest;
 import com.elite4.anandan.registrationservices.model.User;
 import com.elite4.anandan.registrationservices.repository.UserRepository;
 import com.elite4.anandan.registrationservices.security.JwtTokenProvider;
+import com.elite4.anandan.registrationservices.service.PhoneService;
 import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.Optional;
@@ -29,6 +31,9 @@ public class AuthService {
 
     @Autowired
     private NotificationClient notificationClient;
+
+    @Autowired
+    private PhoneService phoneService;
 
     public AuthService(UserRepository userRepository,
                        PasswordEncoder passwordEncoder,
@@ -121,6 +126,61 @@ public class AuthService {
             log.error("CHANGE PASSWORD FAILED - Exception: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body("Failed to change password: " + e.getMessage());
+        }
+    }
+
+    public ResponseEntity<?> updateProfile(Authentication authentication, UserProfileUpdateRequest request) {
+        try {
+            if (authentication == null || authentication.getName() == null) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Authentication required");
+            }
+
+            String identifier = authentication.getName();
+            Optional<User> userOpt = identifier.contains("@")
+                    ? userRepository.findByEmail(identifier)
+                    : userRepository.findByPhoneE164(identifier).or(() -> userRepository.findByPhoneRaw(identifier));
+
+            if (userOpt.isEmpty()) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body("User not found");
+            }
+
+            User user = userOpt.get();
+            boolean changed = false;
+
+            if (request.getEmail() != null && !request.getEmail().isBlank()
+                    && !request.getEmail().equalsIgnoreCase(user.getEmail())) {
+                // Check uniqueness
+                if (userRepository.findByEmail(request.getEmail()).isPresent()) {
+                    return ResponseEntity.badRequest().body("Email is already in use by another account.");
+                }
+                user.setEmail(request.getEmail().trim().toLowerCase());
+                changed = true;
+            }
+
+            if (request.getPhoneNumber() != null && !request.getPhoneNumber().isBlank()) {
+                String e164 = phoneService.toE164(request.getPhoneNumber());
+                if (e164 != null && !e164.equals(user.getPhoneE164())) {
+                    if (userRepository.findByPhoneE164(e164).isPresent()) {
+                        return ResponseEntity.badRequest().body("Phone number is already in use by another account.");
+                    }
+                    user.setPhoneE164(e164);
+                    user.setPhoneRaw(request.getPhoneNumber().trim());
+                    changed = true;
+                }
+            }
+
+            if (!changed) {
+                return ResponseEntity.ok("No changes detected.");
+            }
+
+            user.setUpdatedAt(Instant.now());
+            userRepository.save(user);
+            log.info("Profile updated for user: {}", user.getUsername());
+            return ResponseEntity.ok("Profile updated successfully.");
+        } catch (Exception e) {
+            log.error("UPDATE PROFILE FAILED: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Failed to update profile: " + e.getMessage());
         }
     }
 

@@ -372,6 +372,13 @@ public class UserController {
         return authService.resetPasswordWithOtp(request);
     }
 
+    @PatchMapping("/profile")
+    @PreAuthorize("hasAnyRole('USER','ADMIN','MODERATOR')")
+    public ResponseEntity<?> updateProfile(Authentication authentication,
+                                           @RequestBody UserProfileUpdateRequest request) {
+        return authService.updateProfile(authentication, request);
+    }
+
 
     /**
      * Get all users pending approval (inactive users).
